@@ -9,9 +9,13 @@ IBM-PC.
 Extensions are Turtle graphics, using X11.  Hence X11 is needed to link.
 A complete environment can be loaded/saved using the load and save primitives.
 
-File reading and writing is supported.  No network connectivity.  A System promitive allows shell execution.
+File reading and writing is supported.  No network connectivity.  A System priomitive allows shell execution.
 
-Tested in Linux, Ubuntu and Devuan. Also Debian (Raspian) on ARM64.
+Tested on Linux, Ubuntu and Devuan. Also Debian (Raspian) on ARM64.
+
+> Quotes are either ( quoted list ) or '(quoted list)  or "text" .
+> Also a ; in source is a comment, and a ! in text escapes the space.
+> So 'some! text  is a single string.
 
 ## Build and install.
 
@@ -24,23 +28,26 @@ libx11-dev
 GCC 12.2.0 or above
 
 ### Build 
-Change directory to lisp/src
 
+'''
+cd lisp/src
 make clean
-
 make
+'''
 
 ### Running
 
 lisp [files to load]
 
-e.g. lisp stdload.lsp a.lsp tri2.lsp
+'''
+lisp stdload.lsp a.lsp tri2.lsp
+'''
 
 Useful ones are in lisp/lisplib
 
 stdload is in the lisp directory for convenience.
 
-Lisp source can be loaded using the (load 'filename.lsp)
+Lisp source can be loaded using the function (load 'filename.lsp)
 
 (oblist) shows all functions
 
