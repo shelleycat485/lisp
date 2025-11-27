@@ -1,0 +1,6 @@
+(help and)
+(help or)
+(help cond)
+(load "lisplib/stdload.lsp" )
+(load "stdload.lsp" )
+
