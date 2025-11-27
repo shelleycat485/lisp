@@ -29,19 +29,19 @@ GCC 12.2.0 or above
 
 ### Build 
 
-'''
+```
 cd lisp/src
 make clean
 make
-'''
+```
 
 ### Running
 
 lisp [files to load]
 
-'''
+```
 lisp stdload.lsp a.lsp tri2.lsp
-'''
+```
 
 Useful ones are in lisp/lisplib
 
