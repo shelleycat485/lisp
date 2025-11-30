@@ -10,7 +10,7 @@ Extensions are Turtle graphics, using X11.  Hence X11 is needed to link.
 A complete environment can be loaded or saved using the load and save functions 
 (load is built in, save is written in lisp).
 
-File reading and writing is supported.  No network connectivity.  A System priomitive allows shell execution.
+File reading and writing is supported.  No network connectivity.  A System primitive allows shell execution.
 
 Tested on Linux, Ubuntu and Devuan. Also Debian (Raspian) on ARM64.
 
