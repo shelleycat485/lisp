@@ -247,7 +247,7 @@
     )
   )
 
-
+(defun if arglist (and (eval (car arglist))   (eval (cadr arglist )) ))
 
 
 
