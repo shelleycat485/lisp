@@ -44,7 +44,11 @@
 (put   'null 'helptext "(null ()) returns true if arg is false" )
 (put   'not 'helptext "(not) returns true if arg is falge" )
 (put   'length 'helptext "length of a top level list" )
-(put   'obl 'helptext "various help functions, use (obl) or (obl n) 1 to 10" )
+(put   'obl 'helptext "diagnostic:
+(obl) show object list (obl 1) property list (obl 2) storage
+(obl 3) force gc (obl 4) break (obl 5) gc stats on (obl 6) gc stats off
+(obl 7) eval trace on (obl 8) ev trace off (obl 9) binding list
+(obl 10) all Subrs (obl 11) prog exit")
 (put   'print 'helptext "prints the s-exp, space between atoms" )
 (put   'prin 'helptext "prints the s-exp with no spaces between atoms" )
 (put   'eq 'helptext "true if atoms or list the same. Type equal to see more general function." )

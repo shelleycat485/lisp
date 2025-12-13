@@ -230,36 +230,36 @@ if (showarg)
 while(TRUE)
 	{
 	int ccc;
-	sprintf(outbuf, "\n Abort");
+	sprintf(outbuf, "\n Abort/Trace/Return");
 	condpr(stdout);
-	fflush(inStream);
 	ccc = fgetc(inStream);
-	sprintf(outbuf, "\n after Abort got a %c\n", ccc);
-	condpr(stdout);
 	switch (ccc)
 		{
 			case 'A' :
 			case 'a' :
 			case EOF :
-				longjmp(main_env,2);
+				  longjmp(main_env,2);
 			case 'T' :
 			case 't' :
+				sprintf(outbuf, "Abo t"); condpr(stdout);
 				trace = TRUE;
 				lex_sexp(inStream, &retval);
 				return retval;
 			case 'R' :
 			case 'r' :
+				sprintf(outbuf, "Abo r"); condpr(stdout);
 				trace = FALSE;
 				lex_sexp(inStream, &retval);
+				lx_prin( stdout, retval, SPACE, NOESC);
 				return retval;
 			default:
-			       ;  /* do nothing */
+			       break;  /* do nothing */
 		} /* end switch */
 	} /* end loop */
 } /* end function report_error */
 
 
-
+
 int bind_uneval (SLC *formalargs,
 		SLC *actualargs    );
 int lambda_bind (SLC *formalargs,
