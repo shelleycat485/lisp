@@ -113,11 +113,15 @@
   (implode (reverse wlis))
 )
 
+
 (setq literals 
-   (list space '!' lpar rpar '. ', '!" "'" ";" ":" "?" (implode '(13)) (implode '(10)) ))
+   (list 32 34 39 40 41 13 10 44 46 58 59 63))
  
 (defun isnotalphanum (atm)
-    (member atm literals)  
+   (cond
+     ((null  atm) ())
+     ( t ( member ( ordinal  atm ) literals )
+	 ))
 )
 
 

@@ -110,6 +110,7 @@
  (setq lpar '!( )
  (setq rpar '!) )
  (setq cr (implode '(10 13)))
+ (setq lf (implode '(10)))
 
 ; uses of obl primitive - this is specific to this implementation
 ; (obl) produces all oblist defs in full

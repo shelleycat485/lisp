@@ -101,7 +101,8 @@ while (isgraph(cc)) {
 	}
 	astr [atomlength++] = cc;
 	if (atomlength == MAXIDLEN ) {
-		puts("Error: identifier too long");
+		astr [MAXIDLEN - 2] = 0;
+		printf("Error: Identifier too longi\n%s",astr);
 		longjmp (main_env, 2);
 	}
 	cc = (char) nextch(infile);
@@ -306,7 +307,8 @@ if (toktype == QUOTTOK )
 	  }
 	  astr [atomlength++] = cc;
 	  if (atomlength == MAXIDLEN ) {
-		printf ("Error: identifier too long\n");
+		astr[MAXIDLEN - 2] = 0;
+		printf ("Error: Identifier too long\n%s",astr);
 		longjmp (main_env, 2);
 	  }
 	} /* end loop */
