@@ -109,7 +109,7 @@
  (setq space '! )
  (setq lpar '!( )
  (setq rpar '!) )
- (setq cr (implode '(10 13)))
+ (setq cr (implode '(13 10)))
  (setq lf (implode '(10)))
 
 ; uses of obl primitive - this is specific to this implementation

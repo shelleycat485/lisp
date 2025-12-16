@@ -567,10 +567,12 @@ int redefs;
 endeval:
 
 	if (trace) {
-		sprintf (outbuf, "\nEval given (in trace now): ");
+		sprintf(outbuf, "\r\nEval trace: ");
 		condpr (stdout);
-		lx_prin (stdout,inptr, SPACE, NOESC);
-                if (trace++ == 10) {
+		lx_prin(stdout,inptr, SPACE, NOESC);
+		/*sprintf(outbuf, "\r\n");
+		condpr (stdout); */
+                if (trace++ >= 14) {
 			longjmp( main_env, 2); /* getting fed up of trace printing */
 		}
 	} /* end tracing action */
