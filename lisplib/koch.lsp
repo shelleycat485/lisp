@@ -38,21 +38,6 @@
 ( lambda ()( home )( pd )( repeat  4 ( list ( koch  3  600 )( turn  90 ))))
 ))
 
-( setq  save2 (quote
-( lambda ( fname  lis )( setq  lis ( obl ))( loop ( while  lis )( wr_exp3 ( car ( car  lis )))( setq  lis ( cdr  lis ))))
-))
-( setq  save (quote
-( lambda ( fname )( and ( setq  fname ( open  fname  t ))( save2  fname ()))( close  fname ))
-))
-( setq  wr_exp3 (quote
-( lambda ( exp )( writen  fname  lpar )( write  fname ( quote  setq ))( writec  fname  exp )( writen  fname  lpar )( writen  fname ( quote  quote ))( writen  fname  cr )( writec  fname ( eval  exp ))( writen  fname  cr )( writen  fname  rpar )( writen  fname  rpar )( writen  fname  cr ))
-))
-( setq  wr_exp2 (quote
-( lambda ( exp )( loop ( print ( quote  give_exp ))( while ( setq  exp ( read )))( wr_exp3  exp )))
-))
-( setq  write_exps (quote
-( lambda ( fname )( and ( setq  fname ( open  fname  t ))( wr_exp2 ()))( close  fname ))
-))
 ( setq  edfflg (quote
  true 
 ))

@@ -71,6 +71,8 @@
 (defun cddddr (lis) (cdr (cdr (cdr (cdr lis)))))
 (defun caddr (lis) (car (cdr (cdr lis))))
 (defun cadddr (lis) (car (cdr (cdr (cdr lis)))))
+(defun cadar (lis) (car (cdar lis)))
+(defun caadr (lis) (car (cadr lis)))
 
 (defun equal (lis1 lis2)  ;like the primitive eq, but works on lists too
  (cond

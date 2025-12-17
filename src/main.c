@@ -148,7 +148,7 @@ SLC *hptr; /* head of list to be evaluated */
 printf("LISP. Copyright R Haxby 1991-2025. Version 3.10\n");
 printf("This program comes with ABSOLUTELY NO WARRANTY;\n");
 printf("This is free software, and you are welcome to redistribute it\n");
-printf("under certain conditions");
+printf("under certain conditions - see COPYING\n");
 
 if (pipe1) {
 	printf("Error: pipe failed in main.c\n");
@@ -1227,7 +1227,7 @@ FILE *testfp(SLC *inptr)
 if (!isnullcell(inptr) && inptr->lstat == NUMATOM && inptr->isfptr == 1) {
 	return (inptr->r.rigfp);
 } else {
-	return (stdin);
+	return (inStream);
 }
 } /* end function testfp */
 

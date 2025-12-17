@@ -3,26 +3,9 @@
 (setq rpar '!))
 (setq cr (implode '(10 13) ))
 
-( setq  write_exps (quote
-( lambda  (fname) 
-  ( and 
-    ( setq  fname ( open fname t ))
-    ( wr_exp2 ())
-  )
-  ( close  fname ))
-))
-
-
- (defun  wr_exp2 (exp)
-  (loop
-    ( print 'give_exp )
-    ( while (setq  exp ( read )))
-    (wr_exp3 exp)
-   ) ;end loop
- )     
 
 (setq wr_exp3 (quote
- (lambda (exp)
+ (lambda (fname exp)
      ( writen  fname lpar) (write fname (quote setq)) 
      ( writec  fname  exp )
      ( writen  fname lpar) (writen fname (quote quote))
@@ -37,18 +20,34 @@
 ; saves entire memory image in file- use as (save image.lsp)
 
 (defun save (fname)
-    (and 
-      ( setq  fname ( open fname t ))
-      (save2 fname ())
-    )
+    ( setq  fname ( open fname t ))
+      (save* fname ())
+      (write fname (quote !"now saving property lists!"))
+      (write fname cr)
+      (saveplist* fname (proplists))
     (close  fname )
 )
 
-(defun save2 (fname lis)
- (setq lis (obl))        ; get whole oblist definition
+(defun save* (fname lis)
+ (setq lis (obl))  ; get whole oblist definition
  (loop
   (while lis)
-  (wr_exp3 (car (car lis)))
+  (wr_exp3 fname (car (car lis)))
   (setq lis (cdr lis))
  )
 )
+
+(defun saveplist* (fname lis)
+  (let ((prop ()) )
+    (loop
+      (cond ((atom (car lis)) (setq prop (car lis)) (setq lis (cdr lis))))
+      (writen fname  (list  'put
+		    " '" (caar lis)
+		    " '"  prop
+		    " '" (cadar lis)))
+      (writen fname  cr) 
+      (while (setq lis (cdr lis)))
+      )
+    )
+  )
+
