@@ -39,36 +39,31 @@
  )
 )
 
-; most of this is because put is written awkwardly, but would have to rewrite
-; it and any uses to make it easier
-; Each found property is written out as a put statement
-(defun saveplist* (fname lis)
-  (let ((prop ()) )
-    (loop
-      (cond ((atom (car lis)) (setq prop (car lis)) (setq lis (cdr lis))))
-      (cond ((and (listp (car lis) (not (null (car lis)))))) 
-	      (write  fname "(" )
-	      (write  fname  (quote put))
-	      (write  fname  " (quote ")
-	      (writen  fname (caar lis))
-	      (write  fname " ) ( quote " )
-	      (writec  fname prop) ; properties can have spaces
-	      (write  fname " ) "  )
-	      (write  fname " ( quote ")
-	      (writec  fname (cadar lis)) ; properties can be s-exps
-	      (writen fname " ))")
-	      (writen fname  cr) 
-	      (while (setq lis (cdr lis)))
-	))
-    )
-  )
-)
-
-; so the saved cr is the one that works with sprint, no matter the current
-; value of cr, otherwise load of a save image is very difficult
 (defun savecr (fname)
   (write fname 
   (quote (setq cr (implode (list 13 10))))
   )
  )
+
+
+(defun saveplist* (fname lis)
+  (let ((prop ()) )
+    (loop
+      (cond ((atom (car lis)) (setq prop (car lis)) (setq lis (cdr lis))))
+      (cond ((and (listp (car lis) (not (null (car lis))))) 
+	      (write  fname "(" )    (write  fname  (quote put))
+	      (write  fname  " (quote ")  (writec  fname (caar lis))
+	      (write  fname " ) ( quote " )  (writec  fname prop) 
+	      (write  fname " ) "  )
+	      (write  fname " ( quote ")
+	      (writec  fname (cadar lis)) 
+	      (writen fname " ))")
+	      (writen fname  cr))
+
+	)
+      (while (setq lis (cdr lis)))
+    )
+  )
+)
+
 
