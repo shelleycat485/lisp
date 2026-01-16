@@ -41,16 +41,18 @@
 
 
 (defun triangle (len colour)
+  (let ((oa (turn 0)) (clen (/ len 1.732)))
 (pu)
 (colour)
-(move (/ len 1.732))
+(move clen)
 (pd)
 (turn 30)
 (repeat 3 (list (turn 120) (move len)))
 (turn 150)
 (pu)
-(move (/ len 1.732))
-)
+(move clen)
+(turnto oa)
+))
 
 (defun square (len colour)
   (pu)
