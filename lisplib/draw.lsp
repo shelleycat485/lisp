@@ -65,7 +65,7 @@
   (pu)
   (turn -45)
   (move (* len -0.707))
-  (turn 45)
+  (turn -45)
 )
 
 
