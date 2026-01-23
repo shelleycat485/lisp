@@ -17,4 +17,4 @@
 )
 
 (newscreen 800 800) (pencolour 0 0 0 )
-(repeat 40  (list (turn 15) (tri2 220 0.30)))
+(repeat 40  '(list (turn 15) (tri2 220 0.30)))

@@ -151,8 +151,8 @@
     ((null tree) (setq tree nta) )
     ( t (setq compres (compnode nta tree))
       (cond
-        ((eq compres 'eqi) (list (list (caar tree) (plus 1 (cadar tree))) (cadr tree) (caddr tree)))
-        ((eq compres 'greater) (list (car tree) (cadr tree) (addtotree* val (caddr tree))))
+        ((equal compres 'eqi) (list (list (caar tree) (plus 1 (cadar tree))) (cadr tree) (caddr tree)))
+        ((equal compres 'greater) (list (car tree) (cadr tree) (addtotree* val (caddr tree))))
         ( t       (list (car tree) (addtotree* val (cadr tree)) (caddr tree)))
       )
     )

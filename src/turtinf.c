@@ -1,5 +1,5 @@
 /* LISP Interpreter */
-/* Copyright (C) 1992, 2022-2025 Roger Haxby
+/* Copyright (C) 1992, 2022-2026 Roger Haxby
 *
 *  This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include "turtle.h"
 
 int is_a_num (SLC *form, int arr[], int allowed);
+SLC* two_ele_list(int *xandy);
 SLC * makecell (int value);
 SLC *lx_eval (SLC *inptr);
 
@@ -82,16 +83,15 @@ int vals[2];
 /* params x and y size wanted */
 is_a_num (form, vals, 2); 
 
- InitTurtle (vals);;
+ InitTurtle (vals);
  return NULL;
 } /* initturtle */
 
-SLC *lx_home                        (SLC *form)
+
+SLC* two_ele_list(int *xandy)
 {
 SLC *wkptr = getfree(), *wk2ptr = getfree(), *wk3ptr = getfree();
-int *xandy;
 if (wkptr && wk2ptr && wk3ptr) {
- 	xandy = Home ();
 	wkptr->lstat   = LSLST;
 	wkptr->r.rigptr = wk2ptr;
 	wk2ptr->lstat  = NUMATOM;
@@ -103,6 +103,15 @@ if (wkptr && wk2ptr && wk3ptr) {
 } else {
  	return NULL;
 }
+
+
+}
+
+SLC *lx_home                        (SLC *form)
+{
+int *xandy;
+ 	xandy = Home ();
+	return two_ele_list(xandy);
 
 } /* home */
 

@@ -367,12 +367,13 @@ char *idindex[MAXNUMIDS] =
 "rectangle",
 "onscreen",
 "polygon",
-"let"  /* 68 */
+"let",  /* 68 */
+"compex" /* 69  testing compilations */
  };
 
-const int maxprims = 68; 
-int idcount =  68;
-static int last_index_used = 68; /* to optimise the string storage */
+const int maxprims = 69; 
+int idcount =  69;
+static int last_index_used = 69; /* to optimise the string storage */
 
 int idstuse = 0;
 

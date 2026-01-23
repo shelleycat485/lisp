@@ -46,6 +46,7 @@ extern SLC *lx_while                (SLC *, int );
 extern SLC *lx_null                 (SLC *);
 extern SLC *lx_set                  (SLC *, int );
 extern SLC *lx_let                  (SLC *);
+extern SLC *lx_compex		    (SLC *); /* for testing complilations */
 extern SLC *lx_obl                  (SLC *);
 extern SLC *lx_helpfunc             ();
 extern SLC *lx_plus                 (SLC *, int );
@@ -558,6 +559,9 @@ int redefs;
 			break;
 		case 68:
 			res = lx_let (form);
+			break;
+		case 69:
+			res = lx_compex (form);
 			break;
 		default:
 			report_error ("eval", "non translatable list name", form, TRUE);
@@ -1653,7 +1657,7 @@ if (inptr == NULL) {
 	return NULL;
 }
 if (inptr->lstat != LSLST) {
-	return report_error ("car", "argument must be a list", inptr, TRUE);
+	return report_error ("car", "car argument must be a list", inptr, TRUE);
 }
 mark_req(inptr);
 copycell (inptr->r.rigptr,res = getfree());

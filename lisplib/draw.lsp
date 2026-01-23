@@ -5,10 +5,10 @@
 ( lambda ( size  ang )( radial  size )( turn  ang ))
 ))
 ( setq  starburst (quote
-( lambda ( size )( repeat  15 ( radturn  size ( /  360  15 ))))
+( lambda ( size )( repeat  15 '( radturn  size ( /  360  15 ))))
 ))
 ( setq  star20 (quote
-( lambda ( size )( repeat  20 ( radturn  size ( /  360  20 ))))
+( lambda ( size )( repeat  20 '( radturn  size ( /  360  20 ))))
 ))
 ( setq  pu (quote
 ( lambda ()( pendown  0 ))
@@ -16,12 +16,15 @@
 ( setq  pd (quote
 ( lambda ()( pendown  1 ))
 ))
-( setq  repeat1 (quote
-( lambda ( n  arg )( loop ( until ( minusp ( setq  n ( -  n  1 ))))( eval  arg )))
-))
+
 ( setq  repeat (quote
-( lambda  lis ( repeat1 (eval ( car  lis ))( cadr  lis )))
-))
+( lambda  (mm fun) 
+	  (loop
+	    (until (minusp (setq mm (difference mm 1))))
+	    (eval fun)
+	  )
+)))
+
 ( setq  newscreen (quote
 ( lambda (x y )( initturtle  x  y ))
 ))
@@ -47,7 +50,7 @@
 (move clen)
 (pd)
 (turn 30)
-(repeat 3 (list (turn 120) (move len)))
+(repeat 3 '(list (turn 120) (move len)))
 (turn 150)
 (pu)
 (move clen)
@@ -61,7 +64,7 @@
   (move (* len 0.707))
   (turn 45)
   (pd)
-  (repeat 4 (list (turn 90) (move len)))
+  (repeat 4 '(list (turn 90) (move len)))
   (pu)
   (turn -45)
   (move (* len -0.707))

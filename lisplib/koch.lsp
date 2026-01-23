@@ -35,15 +35,17 @@
 
 
 ( setq  tk2 (quote
-( lambda ()( home )( pd )( repeat  4 ( list ( koch  3  600 )( turn  90 ))))
+( lambda ()( home )( pd )( repeat  4 
+	(quote ( list ( koch  3  600 )( turn  90 )))))
 ))
 
 ( setq  edfflg (quote
  true 
 ))
 ( setq  tk1 (quote
-( lambda ()( home )( pd )( repeat  6 ( list ( koch  3  450 )( turn  60 ))))
-))
+( lambda ()( home )( pd )( repeat  6 
+	(quote ( list ( koch  3  450 )( turn  60 ))))
+)))
 ( setq  edeflg (quote
  true 
 ))
