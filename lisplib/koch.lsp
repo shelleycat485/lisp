@@ -44,9 +44,6 @@
 ( setq  tk1 (quote
 ( lambda ()( home )( pd )( repeat  6 ( list ( koch  3  450 )( turn  60 ))))
 ))
-( setq  ang (quote
- -20 
-))
 ( setq  edeflg (quote
  true 
 ))
