@@ -140,13 +140,14 @@ static FILE *inStream = NULL;
 int main(int argc, char *argv[])
 {
 int jmpvalue,i;
+int fileguard = 0;
 char *libname;
 /*int fd[2];*/
 int fd1[2];
 int pipe1 = pipe(fd1);
 SLC *hptr; /* head of list to be evaluated */
 
-printf("LISP. Copyright R Haxby 1991-2025. Version 3.10\n");
+printf("LISP. Copyright R Haxby 1991-2026. Version 3.20\n");
 printf("This program comes with ABSOLUTELY NO WARRANTY;\n");
 printf("This is free software, and you are welcome to redistribute it\n");
 printf("under certain conditions - see COPYING\n");
@@ -170,10 +171,16 @@ if (libname != NULL) {
 /* look for series of load filenames */
 
 jmpvalue = setjmp(main_env);   /* first def point for user break*/
-set_control_c ();      /* set up control C handler here */
+set_control_c();      /* set up control C handler here */
+
+if (++fileguard > 10)
+{
+	printf("failed on reading one of the files, bailing\n");
+	exit(7); // have read a lot of files in a loop, bailing
+}
 
 for(i=1; i < argc ; ++i){
-	printf ("...reading file %s\n", argv[i]);
+	printf("...reading file %s\n", argv[i]);
 	read_file (argv[i]);
 } /* end i loop */
 
