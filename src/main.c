@@ -27,6 +27,7 @@
 #include "listspec.h"
 #include "turtinf.h"
 #include "linenoise.h"
+#include <string.h>
 
 extern SLC *lx_eval                 (SLC *);
 extern SLC *lx_car                  (SLC *);
@@ -145,7 +146,10 @@ char *libname;
 /*int fd[2];*/
 int fd1[2];
 int pipe1 = pipe(fd1);
+#define SZ_LGF 80
+char last_good_file[SZ_LGF];
 SLC *hptr; /* head of list to be evaluated */
+last_good_file[0] = 0;
 
 printf("LISP. Copyright R Haxby 1991-2026. Version 3.20\n");
 printf("This program comes with ABSOLUTELY NO WARRANTY;\n");
@@ -175,13 +179,14 @@ set_control_c();      /* set up control C handler here */
 
 if (++fileguard > 10)
 {
-	printf("failed on reading one of the files, bailing\n");
+	printf("failed while reading file %s, bailing\n", last_good_file);
 	exit(7); // have read a lot of files in a loop, bailing
 }
 
 for(i=1; i < argc ; ++i){
-	printf("...reading file %s\n", argv[i]);
-	read_file (argv[i]);
+	strncpy(last_good_file, argv[i], SZ_LGF);
+	printf("...reading file %s\n", last_good_file);
+	read_file (last_good_file);
 } /* end i loop */
 
     pid_t pid = fork();
