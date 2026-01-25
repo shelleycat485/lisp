@@ -30,8 +30,12 @@
       (until (eof fh))
       (setq exp (read fh))
       (setq count (+ count 1))
-      (mapc 'print (list (screen_col_red) count "reading"
-               (screen_col_tgreen) exp cr cr))
+      (screen_col_red)
+      (print count) (print "reading")
+      (screen_col_tgreen)
+      (print exp)
+      (print cr)
+      (print cr)
       (readch) ; pauses until return pressed
       )
     (close fh)
