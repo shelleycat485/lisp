@@ -17,6 +17,7 @@
 	       ((not (listp (cadr ele1)))
 		 (screen_col_white) (print "arg not list") 
 		 (screen_col_tgreen) (print ele1))
+	       (t (screen_col_green) (print (cadr ele1)) (screen_col_tgreen))
        ))
      (t (screen_col_red) (print "not a func") (print ele1) (screen_col_tgreen))
    )
