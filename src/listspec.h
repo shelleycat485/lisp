@@ -1,5 +1,5 @@
 /* LISP Interpreter */
-/* Copyright (C) 1992, 2022-2025 Roger Haxby
+/* Copyright (C) 1992, 2022-2026 Roger Haxby
 *
 *  This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -81,7 +81,7 @@ void set_control_c (void);
 
 
 extern jmp_buf  main_env;
-extern int  trace,looplevel, garb_announce;
+extern int  trace,looplevel, garb_announce, syslogyes;
 
 /* any functions starting lx_ are lisp primitives, accessible directly */
 

@@ -23,6 +23,7 @@
 #include  <setjmp.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <syslog.h>
 #include <math.h>
 #include "listspec.h"
 #include "turtinf.h"
@@ -76,6 +77,7 @@ void Prompt_and_Read(int fout);
 SLC *internal_set(SLC *form, int mode, int bindingflag);
 
 int garb_announce = FALSE;
+int syslogyes = FALSE;
 jmp_buf main_env;
 
 void read_file (char *fname)
@@ -164,6 +166,10 @@ initmainlist();
 linenoiseHistoryLoad("history.txt"); /* Load the history at startup */
 linenoiseHistorySetMaxLen(50);
 
+setlogmask (LOG_UPTO (LOG_NOTICE));
+openlog ("lisp", LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE), "Program started");
+
 /* look for environment lisp library, and load it if found */
 
 libname = getenv("LISPLIB");
@@ -171,6 +177,15 @@ if (libname != NULL) {
 	printf ("...reading file %s\n", libname);
 	read_file (libname);
 }
+
+syslogyes = FALSE;
+libname = getenv("LISPSYSLOG");
+if (libname != NULL) {
+	syslogyes = TRUE;
+	printf ("syslogyes is %d\n", syslogyes);
+}
+
+
 
 /* look for series of load filenames */
 
@@ -298,8 +313,16 @@ int redefs;
 	} 
 
 	if (inptr->lstat == IDATOM) {
+                if (syslogyes) {
+			syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+			       	"start_search %d", inptr->r.idval);
+		}
 		res1 = sear_oblist (inptr);
 		if (res1 != NULL) {
+                   if (syslogyes) {
+                        syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+			    "end_search %s", getident(inptr->r.idval));
+		   }
 			/* get the oblist entry value */
 			res1 = res1->r.rigptr;
 			res = res1->lefptr;

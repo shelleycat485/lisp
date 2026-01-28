@@ -1,5 +1,5 @@
 /* LISP Interpreter */
-/* Copyright (C) 1992, 2022-2025 Roger Haxby
+/* Copyright (C) 1992, 2022-2026 Roger Haxby
 *
 *  This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <malloc.h>
+#include <syslog.h>
 #include <setjmp.h>
 #include "listspec.h"
 
@@ -44,6 +45,7 @@
 /* copies the contents of the source to the destination                  */
 
 
+int  string_garbage(void);
 
 SLC *frlptr, *oblptr, *binlptr, *prlptr;
 SLC *mlist ;
@@ -164,10 +166,14 @@ if (reclaimed == 0) {
 	puts("\nWarning: cannot reclaim any cells, evaluation stopped");
 	longjmp( main_env , 2);
 }
+syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+	"Cell gc: %d of %d cells %d reclaimed", gcnum, targele, reclaimed);
 if (garb_announce) {
 	sprintf (outbuf, "Garbage collection %d, of %d cells, %d reclaimed\n",gcnum, targele,reclaimed);
 	condpr (stdout);
 } /* end if announced */
+string_garbage();
+
 } /* end function garbage_coll */
 
 
@@ -378,7 +384,6 @@ static int last_index_used = 69; /* to optimise the string storage */
 int idstuse = 0;
 
 
-int  string_garbage(void);
 
 void initidstore(void)
 {
@@ -496,6 +501,8 @@ for(i = maxprims+1 ; i < MAXNUMIDS; i++ )
 idstptr -=  charsreclaimed;
 idstuse -= charsreclaimed;
 idcount -= idsreclaimed;
+syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+	"String gc: %d chars, %d ids", charsreclaimed, idsreclaimed);
 if (garb_announce) {
 	sprintf (outbuf, " Strings reclaimed, %d chars, %d ids\n",charsreclaimed, idsreclaimed);
 	condpr (stdout);
