@@ -30,6 +30,8 @@
 #include "linenoise.h"
 #include <string.h>
 
+#define LISPVER "3.20"
+
 extern SLC *lx_eval                 (SLC *);
 extern SLC *lx_car                  (SLC *);
 extern SLC *lx_cdr                  (SLC *);
@@ -153,8 +155,9 @@ char last_good_file[SZ_LGF];
 SLC *hptr; /* head of list to be evaluated */
 last_good_file[0] = 0;
 
-printf("LISP. Copyright R Haxby 1991-2026. Version 3.20\n");
-printf("This program comes with ABSOLUTELY NO WARRANTY;\n");
+printf("LISP. Copyright R Haxby 1991-2026. Version ");
+printf(LISPVER);
+printf("\nThis program comes with ABSOLUTELY NO WARRANTY;\n");
 printf("This is free software, and you are welcome to redistribute it\n");
 printf("under certain conditions - see COPYING\n");
 
@@ -168,9 +171,6 @@ linenoiseHistorySetMaxLen(50);
 
 setlogmask (LOG_UPTO (LOG_NOTICE));
 openlog ("lisp", LOG_PID | LOG_NDELAY, LOG_LOCAL1);
-if (syslogyes) {
-	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE), "Program started");
-}
 /* look for environment lisp library, and load it if found */
 
 libname = getenv("LISPLIB");
@@ -184,6 +184,9 @@ libname = getenv("LISPSYSLOG");
 if (libname != NULL) {
 	syslogyes = TRUE;
 	printf ("syslogyes is %d\n", syslogyes);
+}
+if (syslogyes) {
+	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE), "lisp started %s", LISPVER);
 }
 
 
