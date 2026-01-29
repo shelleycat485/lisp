@@ -252,10 +252,14 @@ SLC *wkptr, *oblidptr;
 /* if found, returns the entry cell for the definition  */
 /* if not found, returns a null pointer */
 
-if (inatom == NULL) return NULL;
+/* if (inatom == NULL) return NULL; taken our because redundant 29/1/2026 RH*/
 
-if (isnullcell(inatom)==FALSE) {
+if ((isnullcell(inatom)==FALSE) && (inatom->lstat == IDATOM)) {
 	inid = inatom->r.idval;
+	if (syslogyes) {
+		syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+			"start_search %d", inid);
+	}	
 	pass = guardcount = 1;
 	while (pass <= 2) {
 		if (pass == 1) {
@@ -267,6 +271,10 @@ if (isnullcell(inatom)==FALSE) {
 			oblidptr = wkptr->r.rigptr;
 			if (inid == oblidptr->r.idval) {
 				/* found the id match */
+				if (syslogyes) {
+					syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+				    	"end_search %s", getident(inid));
+				}
 				return wkptr;
 			}
 			wkptr = wkptr->lefptr;
@@ -501,8 +509,10 @@ for(i = maxprims+1 ; i < MAXNUMIDS; i++ )
 idstptr -=  charsreclaimed;
 idstuse -= charsreclaimed;
 idcount -= idsreclaimed;
-syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+if (syslogyes) {
+	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
 	"String gc: %d chars, %d ids", charsreclaimed, idsreclaimed);
+}
 if (garb_announce) {
 	sprintf (outbuf, " Strings reclaimed, %d chars, %d ids\n",charsreclaimed, idsreclaimed);
 	condpr (stdout);

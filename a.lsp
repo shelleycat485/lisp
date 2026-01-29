@@ -258,7 +258,7 @@
   (cond
     ((or (lesserp a b) (zerop b) (zerop a)) (print "mod:zero or a<b"))
     (t
-      (loop	(until (greaterp (setq bw (* bw 2)) a))) 
+      (loop	(until (greaterp (setq bw (+ bw bw)) a))) 
       (loop	(until (lesserp (setq bw (- bw b)) a )))
       (- a bw) 
     )

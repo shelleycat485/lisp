@@ -168,8 +168,9 @@ linenoiseHistorySetMaxLen(50);
 
 setlogmask (LOG_UPTO (LOG_NOTICE));
 openlog ("lisp", LOG_PID | LOG_NDELAY, LOG_LOCAL1);
-syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE), "Program started");
-
+if (syslogyes) {
+	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE), "Program started");
+}
 /* look for environment lisp library, and load it if found */
 
 libname = getenv("LISPLIB");
@@ -313,16 +314,8 @@ int redefs;
 	} 
 
 	if (inptr->lstat == IDATOM) {
-                if (syslogyes) {
-			syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-			       	"start_search %d", inptr->r.idval);
-		}
 		res1 = sear_oblist (inptr);
 		if (res1 != NULL) {
-                   if (syslogyes) {
-                        syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-			    "end_search %s", getident(inptr->r.idval));
-		   }
 			/* get the oblist entry value */
 			res1 = res1->r.rigptr;
 			res = res1->lefptr;
@@ -357,7 +350,7 @@ int redefs;
 		mark_not(form);
 		form = newform;
 		mark_req(form);
-		res1 = sear_oblist(form);
+	res1 = sear_oblist(form);
 	} /* redefinition loop */
 
 	/* return null if null list contents */
