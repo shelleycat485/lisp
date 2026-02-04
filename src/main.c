@@ -74,6 +74,9 @@ extern SLC *lx_system               (SLC *);
 extern SLC *lx_rplaca               (SLC *);
 extern SLC *lx_rplacd               (SLC *);
 extern SLC *lx_ordinal              (SLC *);
+
+extern void syslog_form(SLC* form);
+
 void read_file (char * fname);
 void Prompt_and_Read(int fout);  
 SLC *internal_set(SLC *form, int mode, int bindingflag);
@@ -310,6 +313,8 @@ int redefs;
 	formname = EVALID;
 	res = form = NULL;
 	mark_req (inptr);
+
+	syslog_form(inptr);
 
 	if (inptr->lstat == NUMATOM) {
 		res = inptr;
@@ -2111,3 +2116,24 @@ return res;
 } /* end function lx_while */
 
 
+void syslog_form(SLC* pform)
+{
+	int llen;
+	char* lstatvals[3] = {"List","Number","Idend"};
+	SLC* tp;
+
+	if (!syslogyes) {
+		return;
+	}
+	llen = 0;
+	tp = pform;
+	while (tp->lefptr) {
+		llen++;
+		tp = tp->lefptr;
+	}
+	
+	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+	"lisp form llen=%d lstat=%s idnum=%f",
+       	llen, lstatvals[pform->lstat], pform->r.rigval);
+
+}

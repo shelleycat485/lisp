@@ -252,20 +252,26 @@
   )
 
 
-(defun mod (a b)
-  ; modulus for positive integers
+(defun mod (a b) ; modulus for positive integers
   (let ((bw b))
   (cond
     ((or (lesserp a b) (zerop b) (zerop a)) (print "mod:zero or a<b"))
     (t
-      (loop	(until (greaterp (setq bw (+ bw bw)) a))) 
+      ; increase until bw greater than a
+      (loop	(until (greaterp (setq bw (+ bw bw)) a)))
+      ; then decrease until bw is b or bw is less than a
+      (loop
+	(setq bw (/ bw 2))
+	(until (or (lesserp bw a) (eq bw b)))
+      )
+      ; add an increment back
+      (setq bw (+ bw bw))
+      ; decrease subtracting b from bw until below a
       (loop	(until (lesserp (setq bw (- bw b)) a )))
       (- a bw) 
     )
     )
   ))
-
-
 
 (defun if arglist (and (eval (car arglist))   (eval (cadr arglist )) ))
 
