@@ -39,28 +39,10 @@
 	(quote ( list ( koch  3  600 )( turn  90 )))))
 ))
 
-( setq  edfflg (quote
- true 
-))
 ( setq  tk1 (quote
 ( lambda ()( home )( pd )( repeat  6 
 	(quote ( list ( koch  3  450 )( turn  60 ))))
 )))
-( setq  edeflg (quote
- true 
-))
-( setq  edloc1 (quote
-( lambda ( arg  fval )( cond (( or  edfflg ( atom  arg )) arg )(( equal  fval ( car  arg ))( setq  edfflg  t )( print  arg )( ed1 () arg ))( t ( prin ( quote  * ))( cons ( edloc1 ( car  arg ) fval )( edloc1 ( cdr  arg ) fval )))))
-))
-( setq  sb (quote
-( lambda ( lis  old  new )( cond (( equal  lis  old )( prin ( quote  # )) new )(( atom  lis ) lis )( t ( prin ( quote  * ))( cons ( sb ( car  lis ) old  new )( sb ( cdr  lis ) old  new )))))
-))
-( setq  ed1 (quote
-( lambda ( inch  arg )( loop ( until  edeflg )( setq  inch ( readch ))( cond (( eq  inch  cr )( print  arg ))( t ( cond (( eq  inch ( quote  b ))( until  t ))(( eq  inch ( quote  s ))( prin ( quote  ? ))( setq  arg ( sb  arg ( read )( read )))( prin ( quote  ok )))(( eq  inch ( quote  f ))( prin ( quote  ? ))( setq  edfflg  () )( setq  arg ( edloc1  arg ( read )))( cond (( not  edfflg )( prin ( quote  nt_fnd )))))(( eq  inch ( quote  e ))( until ( setq  edeflg  t )))(( eq  inch ( quote  q ))( obl  4 ))(( eq  inch ( quote  a ))( and ( not ( atom  arg ))( setq  arg ( cons ( ed1 ()( car  arg ))( cdr  arg )))))(( eq  inch ( quote  d ))( and ( not ( atom  arg ))( setq  arg ( cons ( car  arg )( ed1 ()( cdr  arg ))))))(( eq  inch ( quote  x ))( cond (( atom  arg )())( t ( setq  arg ( cdr  arg )))))(( eq  inch ( quote  r ))( prin ( quote  ? ))( setq  arg ( read )))(( eq  inch ( quote  c ))( prin ( quote  ? ))( setq  arg ( cons ( read ) arg )))( t ( print ( quote  error:! adbxrcsfqe ))))))) arg )
-))
-( setq  ed (quote
-( lambda  arg ( setq  edeflg ())( readch )( set ( car  arg )( ed1 ()( eval ( car  arg )))) () )
-))
 ( setq  testkoch (quote
 ( lambda ( depth  side )( pu )( moveto  0  -500 )( pd )( koch  depth  side ))
 ))
