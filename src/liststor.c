@@ -234,7 +234,9 @@ if (src) {
 	dest->lefptr = src->lefptr;
 	dest->r = src->r;
 } else {
-	dest = NULL; /* if blank cell null dest pointer too */
+	dest->lstat = LSLST;
+	dest->r.rigptr = NULL;
+	dest->lefptr = 0;
 }
 } /* end function copycell */
 
@@ -496,7 +498,7 @@ for(i = maxprims+1 ; i < MAXNUMIDS; i++ )
 			if (charsreclaimed)
 			{
 				idindex[i] -= charsreclaimed;
-				strcpy (idindex[i] , strptr);
+				memmove (idindex[i] , strptr, strlen(strptr) + 1);
 			}  /* end if charsreclaimed */
 	       } else {
 			charsreclaimed += strlen( idindex[i] );
@@ -526,7 +528,7 @@ return charsreclaimed;
 char *getident(int index)
 {
 /* returns a string pointer to the id whose index is supplied */
-if (index < 1 || index > MAXID - 1) {
+if (index < 1 || index > MAXNUMIDS - 1) {
 	puts("Fatal: invalid id");
 	exit(20);
 }
