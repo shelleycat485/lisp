@@ -714,7 +714,7 @@ return numbound;
 
 SLC *do_lambda(SLC *inptr, SLC *form)
 {
-SLC *formalargs,*actionptr,*actualargs,*res, *temp;
+SLC *formalargs,*actionptr,*actualargs,*res, *temp, *actiontop;
 int nbound;
 
 mark_req(actualargs= getfree());
@@ -733,7 +733,8 @@ if (formalargs) {
 } else {
 	actionptr = NULL;
 }
-mark_req(actionptr);
+actiontop = actionptr;
+mark_req(actiontop);
 
 /* bind depending on formal arg type */
 if (isnullcell(formalargs)) {
@@ -748,6 +749,7 @@ if (isnullcell(formalargs)) {
 	nbound = lambda_bind (formalargs,actualargs); /* a list of values */
 } /* end decision of formalargs type */
 
+res = NULL;
 while (actionptr) {
 	res = lx_eval(actionptr);
 	actionptr = actionptr->lefptr;
@@ -764,7 +766,7 @@ while (nbound--) {
 }
 mark_not(actualargs);
 mark_not(formalargs);
-mark_not(actionptr);
+mark_not(actiontop);
 return res;
 
 } /* end function do_lambda */
@@ -957,13 +959,14 @@ return a3val;
 
 SLC *lx_remprop(SLC *form)
 {
-SLC *a1id,*a2prop, *identptr, *propptr, *next;
+SLC *a1id,*a2prop, *identptr, *propptr, *next, *retval;
 
 /* used as remprop id propname */
 /* e.g. (remprop 'a 'mark1) */
 /* id and propname must be atoms */
 /* removes the atoms property, returning NULL */
 
+retval = NULL;
 a1id = form->lefptr;
 a2prop = (a1id) ? a1id->lefptr :NULL;
 mark_req(a1id = lx_eval(a1id));
@@ -971,7 +974,8 @@ mark_req(a2prop = lx_eval(a2prop));
 
 if (a1id == NULL || a2prop == NULL
     ||a1id->lstat == LSLST || a2prop->lstat == LSLST) {
-	return report_error ("remprop", "Id or Prop name not an atom", form, TRUE);
+	retval = report_error ("remprop", "Id or Prop name not an atom", form, TRUE);
+	goto exit;
 } else 	if ((propptr = sear_pname(a2prop))!= NULL) {
 	/* exists - now search for the id entry */
 	if ((identptr = sear_idname(propptr,a1id))!= NULL) {
@@ -989,9 +993,10 @@ if (a1id == NULL || a2prop == NULL
 	} /* end if id found */
 } /* end if property found */
 
+exit:
 mark_not(a1id);
 mark_not(a2prop);
-return NULL;
+return retval;
 } /* end function lx_remprop */
 
 
@@ -1110,7 +1115,7 @@ return a2ptr;
 
 SLC *lx_rplaca(SLC *form)
 {
-SLC *a1ptr,*a2ptr, *listcar, *listcdr;
+SLC *a1ptr,*a2ptr, *listcar, *listcdr, *retval;
 
 a1ptr = form->lefptr;
 a2ptr = (a1ptr) ? a1ptr->lefptr :NULL;
@@ -1120,7 +1125,8 @@ if (a1ptr == NULL || a2ptr == NULL) {
 }
 mark_req(a1ptr = lx_eval(a1ptr));
 if (a1ptr == NULL || a1ptr->lstat != LSLST) {
-	return report_error ("rplaca", "first arg must eval to a list", a1ptr, TRUE);
+	retval = report_error ("rplaca", "first arg must eval to a list", a1ptr, TRUE);
+	goto exit;
 }
 mark_req(a2ptr = lx_eval(a2ptr));
 /* remember the rest of list a1ptr */
@@ -1129,9 +1135,12 @@ listcdr = listcar->lefptr;
 /* and do the dirty work */
 a1ptr->r.rigptr = a2ptr;
 a2ptr->lefptr = listcdr;
+retval = a1ptr;
+
+exit:
 mark_not(a1ptr);
 mark_not(a2ptr);
-return a1ptr;
+return retval;
 
 } /* end function lx_rplaca */
 
@@ -1142,7 +1151,7 @@ return a1ptr;
 
 SLC *lx_rplacd(SLC *form)
 {
-SLC *a1ptr,*a2ptr, *listcar;
+SLC *a1ptr,*a2ptr, *listcar, *retval;
 
 a1ptr = form->lefptr;
 a2ptr = (a1ptr) ? a1ptr->lefptr :NULL;
@@ -1152,14 +1161,18 @@ if (a1ptr == NULL || a2ptr == NULL) {
 }
 mark_req(a1ptr = lx_eval(a1ptr));
 if (a1ptr == NULL || a1ptr->lstat != LSLST) {
-	return report_error ("rplacd", "first arg must eval to a list", a1ptr, TRUE);
+	retval = report_error ("rplacd", "first arg must eval to a list", a1ptr, TRUE);
+	goto exit;
 }
 /* move down to first ele of list, which we know is not null */
 listcar = a1ptr->r.rigptr;
 /* and do the dirty work */
 listcar->lefptr = lx_eval(a2ptr);
+retval = a1ptr;
+
+exit:
 mark_not(a1ptr);
-return a1ptr;
+return retval;
 
 } /* end function lx_rplacd */
 
@@ -1973,7 +1986,7 @@ SLC *lx_set(SLC *form, int mode)
 
 SLC *internal_set(SLC *form, int mode, int bindingflag)
 {
-SLC *a1ptr,*a2ptr,*newptr,*tptr;
+SLC *a1ptr,*a2ptr,*newptr,*tptr,*retval;
 
 /* lx_prin(stdout,form, SPACE, NOESC); this is for debug */
 copycell(form->lefptr, a1ptr = getfree());
@@ -1994,7 +2007,8 @@ mark_req (a2ptr);
 /* does the actual setting of the oblist, arguments are already evaluated */
 /* only assigns if a1ptr has some value, removing old definition, if any */
 if (a1ptr == NULL || a1ptr->lstat != IDATOM) {
-	return report_error("set(q)","args must be non-numeric atoms",form, TRUE);
+	retval = report_error("set(q)","args must be non-numeric atoms",form, TRUE);
+	goto exit;
 } /* end error check */
 /* search returns a null if nothing found */
 newptr = NULL;
@@ -2023,9 +2037,12 @@ if (isnullcell(a2ptr)==FALSE) {
 } else {
 	tptr->lefptr = NULL;
 }
+retval = a2ptr;
+
+exit:
 mark_not (a1ptr);
 mark_not (a2ptr);
-return a2ptr;
+return retval;
 } /* end function lx_set */
 
 
