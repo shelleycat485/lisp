@@ -501,7 +501,7 @@ for(i = maxprims+1 ; i < MAXNUMIDS; i++ )
 				memmove (idindex[i] , strptr, strlen(strptr) + 1);
 			}  /* end if charsreclaimed */
 	       } else {
-			charsreclaimed += strlen( idindex[i] );
+			charsreclaimed += strlen( idindex[i] ) + 1;
 			idindex[i] = NULL;
 			idsreclaimed++;
 	      }  /* end if top bit not marked */
