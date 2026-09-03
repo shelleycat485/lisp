@@ -21,7 +21,7 @@
 ))))
 
 (setq altwords '((p print) (P sprint)
-		 (w write) (q quit) (a car) (d cdr) (b back)))
+		 (w write) (q quit) (a car) (d cdr) (b back) (f find)))
 
 (defun ed1 (inch arg)
   (setq edlevel (+ edlevel 1))
@@ -38,12 +38,16 @@
          (( eq  inch "print" )( prcr arg))
          (( eq  inch "back"   ) (setq edlevel (- edlevel 1)) (until t))
          (( eq  inch "help")
-           ( prcr "print p sprint P back b  help write w quit q  car a cdr d  replace sub delete cons" ) )
+           ( prcr "print p sprint P back b  help write w quit q  car a cdr d  replace sub find delete cons" ) )
          (( eq  inch ( quote  quit ))( obl  4 ))
          (( eq  inch ( quote  car ))( and ( not ( atom  arg ))( setq  arg ( cons ( ed1 ()( car  arg ))( cdr  arg )))) )
          (( eq  inch ( quote  cdr ))( and ( not ( atom  arg ))( setq  arg ( cons ( car  arg )( ed1 ()( cdr  arg ))))))
          (( eq  inch ( quote  replace ))( prcr ( quote  ? ))( setq  arg ( read )) (prcr arg)) 
          (( eq  inch ( quote  sub ))( prcr ( quote  ? ))( setq  arg ( sb  arg ( read )( read )))( prcr arg))
+    ( (eq inch (quote find)) (print '?) (setq edfflg ()) ; set flag to say found or not
+                   (setq arg (edloc1 arg (read)))
+		   (cond ((not edfflg) (print "not found" ) ))
+    )
          (( eq  inch ( quote  delete ))( prcr ( quote  ? ))( setq  arg 
           ( delete ( read ) arg ))( prcr arg))
          (( eq  inch ( quote  cons ))( prcr ( quote  ? ))( setq  arg 
@@ -73,4 +77,16 @@
   ()
 )
 
-
+  (  setq  edloc1  (  quote  
+    ( lambda ( arg  fval ) ; locates fval in arg
+     ( cond 
+       ((or edfflg ( atom  arg )) arg ) ; stop if atom found, or flag set
+         ; when found, does edit on it
+       (( equal  fval ( car  arg )) 
+           (setq edfflg t) (print arg) (print cr) ( ed1 () arg )
+       )
+       ( t ; (print '*)  ; to show working
+           ( cons ( edloc1 ( car  arg ) fval)(edloc1 (cdr arg) fval) )
+       )
+     )
+  )))  

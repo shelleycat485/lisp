@@ -1,0 +1,10 @@
+(defun test (n1 n2)
+  (let ( (funb ()) (func ()) )
+    (screen_col_red) (print (bindings)) (screen_col_tgreen)
+    (defun funb (n) (* n 2))
+    (defun func (lis) (reverse lis))
+	   (print (func aaa))
+    (+ n1 (funb n2))
+    )
+  )
+

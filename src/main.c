@@ -1426,6 +1426,8 @@ if (isnullcell(inptr) || inptr->lstat == LSLST) {
 }
 if (inptr->lstat == IDATOM) {
 	id = getident(inptr->r.idval);
+	strcpy(nbuf, id);
+	id = nbuf;
 } else {
 	/* its a number */
         formatnumberforprint(nbuf, inptr);
