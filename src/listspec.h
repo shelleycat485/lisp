@@ -33,18 +33,28 @@ typedef struct listcell {
 	} r;
 } SLC ;
 
+#define SMALLSTORE 1
+
+#if SMALLSTORE
+/* number of atom ids allowed */
+#define MAXNUMIDS 6000
+/* character space for atoms */
+#define MAXID  5000
+/* main list number of cells */
+#define MAXLELE 6000
+#else
 /* number of atom ids allowed */
 #define MAXNUMIDS 256000
 /* character space for atoms */
 #define MAXID  500000
-
+/* main list number of cells */
+#define MAXLELE 5720000
+#endif
 
 /* max length of an identifier */
 #define MAXIDLEN 500
 
 
-/* main list number of cells */
-#define MAXLELE 5720000
 /* these macros used as the header status for each cell */
 
 #define LSLST 0
