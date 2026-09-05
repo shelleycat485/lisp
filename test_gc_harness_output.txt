@@ -1,0 +1,5 @@
+ GC harness: cell GC + string/ID GC under shrunk-store pressure  
+  ================================================================  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+ 

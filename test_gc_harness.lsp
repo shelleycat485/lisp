@@ -53,13 +53,17 @@
 
 (setq basechars (explode 'gcstress_))
 
+(defun check_sym (n namechars sym)
+  (cond ((not (equal (explode sym) namechars))
+         (setq fail (+ fail 1))
+         (write outfh "id corruption at n=") (write outfh n) (write outfh cr)))
+  sym)
+
+(defun build_sym (n namechars)
+  (check_sym n namechars (implode namechars)))
+
 (defun mk_and_check_sym (n)
-  (let ((namechars (append basechars (explode n))))
-    (let ((sym (implode namechars)))
-      (cond ((not (equal (explode sym) namechars))
-             (setq fail (+ fail 1))
-             (write outfh "id corruption at n=") (write outfh n) (write outfh cr)))
-      sym)))
+  (build_sym n (append basechars (explode n))))
 
 (setq numiters 6000)
 (setq checkevery 250)
