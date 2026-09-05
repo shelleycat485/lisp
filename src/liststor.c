@@ -389,7 +389,7 @@ char *idindex[MAXATOMIDS] =
 "compex" /* 69  testing compilations */
  };
 
-const int maxprims = 69; 
+const int maxprims = 69;
 int idcount =  69;
 static int last_index_used = 69; /* to optimise the string storage */
 
@@ -437,34 +437,31 @@ int res,length;
 /* searches for the string already there */
 if ((res = srchident(string)) != 0) return res;
 
-/* check for space still in the store */
+/* check for space still in the store, or slot numbers, before inserting */
 length = strlen(string);
-if (idstuse+length >= MAXATOMCHARS-1 || idcount == MAXATOMIDS - 1) {
+if (idstuse+length >= MAXATOMCHARS-1 || idcount == MAXATOMIDS - 1
+    || last_index_used == MAXATOMIDS - 1) {
 	if (string_garbage() < length )
 	{
 	    puts("Fatal: No more string space");
 	    exit (3);
 	}
 }
-/* look for somewhere to put string */
-res = (last_index_used == MAXATOMIDS - 1) ? maxprims : last_index_used + 1;
-while (res != last_index_used)
-	{
-	   if (idindex[res] == NULL )
-	     {
-			idcount ++;
-			idindex[res] = strcpy(idstptr,string); /* copy string in */
-			idstuse += length+1;
-			idstptr += length+1; /* allow for terminating 0 */
-			return last_index_used = res;
-	     } /* end if string ok to store */
-	     if (++res == MAXATOMIDS)
-	      {
-			res = maxprims; 
-	      }
-	} /* end loop */
-puts("Fatal: Too many identifiers");
-exit (3);
+
+/* always take the slot right after the current highest in-use slot --
+   never reuse a lower, previously-reclaimed slot out of order. This
+   keeps slot-index order in lock-step with idstore address order,
+   which string_garbage()'s compaction pass depends on. */
+res = last_index_used + 1;
+if (res >= MAXATOMIDS) {
+	puts("Fatal: Too many identifiers");
+	exit (3);
+}
+idcount++;
+idindex[res] = strcpy(idstptr,string); /* copy string in */
+idstuse += length+1;
+idstptr += length+1; /* allow for terminating 0 */
+return last_index_used = res;
 } /* end function putident */
 
 
@@ -472,7 +469,8 @@ exit (3);
 int string_garbage(void)
 {
 /* does a string storage garbage collection */
-int i, charsreclaimed = 0, idsreclaimed = 0;
+int i, idsreclaimed = 0;
+size_t charsreclaimed = 0;
 SLC *current;
 char *strptr;
 
@@ -515,15 +513,23 @@ for(i = maxprims+1 ; i < MAXATOMIDS; i++ )
        } /* end if */
 } /* end for loop */
 
+/* pull the high-water mark back down past any now-empty trailing
+   slots, so putident() can reuse that space. Only the current top of
+   the used range is ever handed out again, keeping slot-index order
+   in lock-step with idstore address order. */
+while (last_index_used > maxprims && idindex[last_index_used] == NULL) {
+	last_index_used--;
+}
+
 idstptr -=  charsreclaimed;
 idstuse -= charsreclaimed;
 idcount -= idsreclaimed;
 if (syslogyes) {
 	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-	"String gc: %d chars, %d ids", charsreclaimed, idsreclaimed);
+	"String gc: %zu chars, %d ids", charsreclaimed, idsreclaimed);
 }
 if (garb_announce) {
-	sprintf (outbuf, " Strings reclaimed, %d chars, %d ids\n",charsreclaimed, idsreclaimed);
+	sprintf (outbuf, " Strings reclaimed, %zu chars, %d ids\n",charsreclaimed, idsreclaimed);
 	condpr (stdout);
 } /* end if announced */
 return charsreclaimed;
