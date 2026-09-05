@@ -1599,7 +1599,7 @@ if (inptr != NULL && inptr->lstat == NUMATOM) {
 			break;
 		case 2: 
 			/* stats on string storage */
-			sprintf( outbuf, "Chars %d out of %d,  Ids %d out of %d\n",idstuse,MAXID,idcount,MAXNUMIDS);
+			sprintf( outbuf, "Chars %d out of %d,  Ids %d out of %d\n",idstuse,MAXATOMCHARS,idcount,MAXATOMIDS);
 			condpr (stdout);
 			break;
 		case 3:

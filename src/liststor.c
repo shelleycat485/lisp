@@ -166,8 +166,10 @@ if (reclaimed == 0) {
 	puts("\nWarning: cannot reclaim any cells, evaluation stopped");
 	longjmp( main_env , 2);
 }
+if (syslogyes) {
 syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
 	"Cell gc: %d of %d cells %d reclaimed", gcnum, targele, reclaimed);
+}
 if (garb_announce) {
 	sprintf (outbuf, "Garbage collection %d, of %d cells, %d reclaimed\n",gcnum, targele,reclaimed);
 	condpr (stdout);
@@ -306,8 +308,8 @@ if ((inptr->lstat == LSLST) && (inptr->r.rigptr == NULL) && (inptr->lefptr == 0)
 
 
 
-char idstore[MAXID],*idstptr = idstore; /* idstptr points to top of char store */
-char *idindex[MAXNUMIDS] =
+char idstore[MAXATOMCHARS],*idstptr = idstore; /* idstptr points to top of char store */
+char *idindex[MAXATOMIDS] =
  {
   "",
 "quote",   /* also defined in macro in listspec.h and used in main.c */
@@ -409,7 +411,7 @@ int srchindex;
 int c1 = *string;
 
 /*c1 = tolower (*string);*/
-for (srchindex = 1; srchindex < MAXNUMIDS ; srchindex++ )
+for (srchindex = 1; srchindex < MAXATOMIDS ; srchindex++ )
 {
 	if ( idindex[srchindex] 
            && c1 == /* tolower*/ (*idindex[srchindex])
@@ -437,7 +439,7 @@ if ((res = srchident(string)) != 0) return res;
 
 /* check for space still in the store */
 length = strlen(string);
-if (idstuse+length >= MAXID-1 || idcount == MAXNUMIDS - 1) {
+if (idstuse+length >= MAXATOMCHARS-1 || idcount == MAXATOMIDS - 1) {
 	if (string_garbage() < length )
 	{
 	    puts("Fatal: No more string space");
@@ -445,7 +447,7 @@ if (idstuse+length >= MAXID-1 || idcount == MAXNUMIDS - 1) {
 	}
 }
 /* look for somewhere to put string */
-res = (last_index_used == MAXNUMIDS - 1) ? maxprims : last_index_used + 1;
+res = (last_index_used == MAXATOMIDS - 1) ? maxprims : last_index_used + 1;
 while (res != last_index_used)
 	{
 	   if (idindex[res] == NULL )
@@ -456,9 +458,9 @@ while (res != last_index_used)
 			idstptr += length+1; /* allow for terminating 0 */
 			return last_index_used = res;
 	     } /* end if string ok to store */
-	     if (++res == MAXNUMIDS)
+	     if (++res == MAXATOMIDS)
 	      {
-			res = maxprims;
+			res = maxprims; 
 	      }
 	} /* end loop */
 puts("Fatal: Too many identifiers");
@@ -474,6 +476,7 @@ int i, charsreclaimed = 0, idsreclaimed = 0;
 SLC *current;
 char *strptr;
 
+
 /* loop through the main list, finding all id pointers */
 /* when found, set the msb of the character in the string store */
 for (i=0, current = mlist ; i< targele ; i++ , current++) {
@@ -487,7 +490,7 @@ for (i=0, current = mlist ; i< targele ; i++ , current++) {
 /* can be erased, otherwise moving the pointer to where the string */
 /* is going to be, moving string down the store, also clear the top bit */
 
-for(i = maxprims+1 ; i < MAXNUMIDS; i++ )
+for(i = maxprims+1 ; i < MAXATOMIDS; i++ ) 
     {
     if (idindex[i])
        {
@@ -497,11 +500,15 @@ for(i = maxprims+1 ; i < MAXNUMIDS; i++ )
 			*strptr &= 0x7f; /* clear top bit */
 			if (charsreclaimed)
 			{
+				if (syslogyes) {
+				syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+				"recl: %s", idindex[i]);
+				}
 				idindex[i] -= charsreclaimed;
 				memmove (idindex[i] , strptr, strlen(strptr) + 1);
 			}  /* end if charsreclaimed */
 	       } else {
-			charsreclaimed += strlen( idindex[i] ) + 1;
+			charsreclaimed += strlen( idindex[i] ) +1 ; 
 			idindex[i] = NULL;
 			idsreclaimed++;
 	      }  /* end if top bit not marked */
@@ -528,7 +535,7 @@ return charsreclaimed;
 char *getident(int index)
 {
 /* returns a string pointer to the id whose index is supplied */
-if (index < 1 || index > MAXNUMIDS - 1) {
+if (index < 1 || index > MAXATOMIDS - 1) {
 	puts("Fatal: invalid id");
 	exit(20);
 }

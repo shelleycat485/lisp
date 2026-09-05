@@ -37,16 +37,16 @@ typedef struct listcell {
 
 #if SMALLSTORE
 /* number of atom ids allowed */
-#define MAXNUMIDS 6000
+#define MAXATOMIDS 1000
 /* character space for atoms */
-#define MAXID  5000
+#define MAXATOMCHARS  6000
 /* main list number of cells */
 #define MAXLELE 6000
 #else
 /* number of atom ids allowed */
-#define MAXNUMIDS 256000
+#define MAXATOMIDS 256000
 /* character space for atoms */
-#define MAXID  500000
+#define MAXATOMCHARS  500000
 /* main list number of cells */
 #define MAXLELE 5720000
 #endif
