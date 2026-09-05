@@ -2,4 +2,56 @@
   ================================================================  
   root_list intact mid-run   ... PASS  
   root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  root_list intact mid-run   ... PASS  
+  root_sym prop intact mid-run   ... PASS  
+  final root_list intact   ... PASS  
+  final root_sym prop intact   ... PASS  
+  root_list intact after final gcoll   ... PASS  
+  root_sym prop intact after final gcoll   ... PASS  
+  
+  results:   52   passed,   0   failed  
  

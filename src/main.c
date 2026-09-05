@@ -29,6 +29,9 @@
 #include "turtinf.h"
 #include "linenoise.h"
 #include <string.h>
+#include <signal.h>
+#include <sys/mman.h>
+#include <errno.h>
 
 #define LISPVER "3.20"
 
@@ -85,6 +88,12 @@ int garb_announce = FALSE;
 int syslogyes = FALSE;
 jmp_buf main_env;
 
+/* shared between this process and the forked Prompt_and_Read child via
+   mmap(MAP_SHARED), set up in main() before fork(). The child sets the
+   flag when it sees Ctrl-C via the linenoise non-blocking API; this
+   process's check_keyboard() polls, clears, and acts on it. */
+static volatile sig_atomic_t *ctrlc_flag_ptr = NULL;
+
 void read_file (char *fname)
 {
 FILE *infilestream;
@@ -120,16 +129,29 @@ SLC *lx_load(SLC *filecell)
 } /* end function lx_load */
 
 
+#define LISP_LINE_BUF 4096
+
 /* runs in a forked process */
-void Prompt_and_Read(int fout){  
+void Prompt_and_Read(int fout){
 	FILE *outStream = fdopen(fout, "w");
+	struct linenoiseState l;
+	char buf[LISP_LINE_BUF];
 	char *line;
 
 	/* send */
 	while(1) {
-		line=linenoise("Lisp:");
+		linenoiseEditStart(&l, -1, -1, buf, sizeof(buf), "Lisp:");
+		while ((line = linenoiseEditFeed(&l)) == linenoiseEditMore)
+			; /* blocks a byte at a time, same as linenoise()'s own internals */
+		linenoiseEditStop(&l);
+
 		if ( line == NULL) {
-			break;
+			if (errno == EAGAIN) {
+				/* Ctrl-C: tell the parent, discard this line, re-prompt */
+				if (ctrlc_flag_ptr) *ctrlc_flag_ptr = 1;
+				continue;
+			}
+			break; /* Ctrl-D / EOF, as before */
 		}
 		linenoiseHistoryAdd(line); /* Add to the history */
 		linenoiseHistorySave("history.txt"); /* Save history on disk */
@@ -139,7 +161,7 @@ void Prompt_and_Read(int fout){
 		free(line); /* needed because linnoise allocates */
 	}
 	fclose(outStream);
-	exit(0); 
+	exit(0);
 } /* end function */
 
 
@@ -197,7 +219,6 @@ if (syslogyes) {
 /* look for series of load filenames */
 
 jmpvalue = setjmp(main_env);   /* first def point for user break*/
-set_control_c();      /* set up control C handler here */
 
 if (++fileguard > 10)
 {
@@ -210,6 +231,14 @@ for(i=1; i < argc ; ++i){
 	printf("...reading file %s\n", last_good_file);
 	read_file (last_good_file);
 } /* end i loop */
+
+ctrlc_flag_ptr = mmap(NULL, sizeof(*ctrlc_flag_ptr), PROT_READ | PROT_WRITE,
+                       MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+if (ctrlc_flag_ptr == MAP_FAILED) {
+	printf("Error: mmap failed for ctrlc_flag_ptr in main.c\n");
+	ctrlc_flag_ptr = NULL;
+}
+if (ctrlc_flag_ptr) *ctrlc_flag_ptr = 0;
 
     pid_t pid = fork();
     if (pid == -1) {
@@ -303,6 +332,16 @@ SLC *do_lambda (SLC *inptr, SLC *form);
 
 int trace; /* for switching on evaluation tracing */
 int formname; /* for debug use, when getfree is called */
+
+void check_keyboard(void)
+{
+/* polls the shared Ctrl-C flag set by the Prompt_and_Read child; if
+   set, clears it and breaks out of the current evaluation */
+	if (ctrlc_flag_ptr && *ctrlc_flag_ptr) {
+		*ctrlc_flag_ptr = 0;
+		longjmp(main_env, 1);
+	}
+} /* end function check_keyboard */
 
 SLC *lx_eval (SLC *inptr)
 {

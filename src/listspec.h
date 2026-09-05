@@ -63,7 +63,6 @@ typedef struct listcell {
 
 /* def for lexical analysis routine */
 extern int lex_sexp(FILE * infile, SLC **retval);
-void set_control_c (void);
 
 
 #define TRUE   1

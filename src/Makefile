@@ -2,7 +2,7 @@
 .SUFFIXES: .c .o
 
 objects = lexical.o main.o liststor.o prsexp.o \
-	setcontc.o turtgrap.o turtinf.o linenoise.o  \
+	turtgrap.o turtinf.o linenoise.o  \
 	compex.o
 CFLAGS = -Wall -g 
 
