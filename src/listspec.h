@@ -18,7 +18,6 @@
 
 /* file listspec.h */
 
-
 typedef struct listcell {
 	unsigned  lstat : 3;
 	unsigned  isfptr : 1;
@@ -33,18 +32,18 @@ typedef struct listcell {
 	} r;
 } SLC ;
 
-#define SMALLSTORE 0
+#define SMALLSTORE 1
 
 #if SMALLSTORE
 /* number of atom ids allowed */
-#define MAXATOMIDS 1000
+#define MAXATOMS 1000
 /* character space for atoms */
 #define MAXATOMCHARS  6000
 /* main list number of cells */
 #define MAXLELE 6000
 #else
 /* number of atom ids allowed */
-#define MAXATOMIDS 256000
+#define MAXATOMS 256000
 /* character space for atoms */
 #define MAXATOMCHARS  500000
 /* main list number of cells */
@@ -104,8 +103,8 @@ void condpr(FILE *fptr);
 extern    int        putident(char *);
 extern    int        srchident(char *);
 extern    char       *getident (int);
-extern    int        idcount; /* identifiers in idstore index */
-extern    int        idstuse; /* characters in idstore */
+extern    int        atomidcount; /* identifiers in idstore index */
+extern    int        atomcharsused; /* characters in idstore */
 extern    const int  maxprims; /* number of primitive operations */
 /* defs for main list access routines */
 

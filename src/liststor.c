@@ -21,6 +21,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <malloc.h>
 #include <syslog.h>
 #include <setjmp.h>
@@ -42,10 +43,27 @@
 /*  detaching it from the free list                                      */
 
 /* void copycell (SLC *src, SLC *dest)           */
-/* copies the contents of the source to the destination                  */
+
+#define SSSIZE 15
+
+typedef struct {
+	union {
+		char inline_buf[SSSIZE +1];
+		struct {
+			char *ptr;
+			size_t capacity;
+		} heap;
+	} data;
+	size_t len;
+	unsigned char isheap;
+} SmallString;
 
 
 int  string_garbage(void);
+char *ss_getstring(SmallString *s);
+void ss_free(SmallString s);
+void ss_store(SmallString *s, const char *src);
+void initatomstore(void);
 
 SLC *frlptr, *oblptr, *binlptr, *prlptr;
 SLC *mlist ;
@@ -83,6 +101,8 @@ for (ncells = 0;ncells < targele;ncells++) {
 	frlptr = wkptr;
 	wkptr++;
 } /* end loop */
+
+initatomstore();
 } /* end function initmainlist */
 
 
@@ -174,6 +194,7 @@ if (garb_announce) {
 	sprintf (outbuf, "Garbage collection %d, of %d cells, %d reclaimed\n",gcnum, targele,reclaimed);
 	condpr (stdout);
 } /* end if announced */
+
 string_garbage();
 
 } /* end function garbage_coll */
@@ -219,7 +240,6 @@ wkptr->gcflagged = 0;
 wkptr->lefptr = 0;
 wkptr->isfptr = 0;
 
-
 return wkptr;
 } /* end function getfree */
 
@@ -241,9 +261,6 @@ if (src) {
 	dest->lefptr = 0;
 }
 } /* end function copycell */
-
-
-
 
 
 SLC *sear_oblist (SLC *inatom)
@@ -307,9 +324,10 @@ if ((inptr->lstat == LSLST) && (inptr->r.rigptr == NULL) && (inptr->lefptr == 0)
 
 
 
-
-char idstore[MAXATOMCHARS],*idstptr = idstore; /* idstptr points to top of char store */
-char *idindex[MAXATOMIDS] =
+SmallString atomstore[MAXATOMCHARS];
+int atomindex[MAXATOMS], *atomindptr = atomindex;
+char idstore[MAXATOMCHARS],*idstptr = idstore; 
+char *primindex[80] =
  {
   "",
 "quote",   /* also defined in macro in listspec.h and used in main.c */
@@ -390,34 +408,36 @@ char *idindex[MAXATOMIDS] =
  };
 
 const int maxprims = 69;
-int idcount =  69;
-static int last_index_used = 69; /* to optimise the string storage */
+int atomidcount = 0;
+int atomcharsused = 0;
 
-int idstuse = 0;
-
-
-
-void initidstore(void)
+void initatomstore(void)
 {
- ;
+ int n;
+ for (n = 1; n < maxprims; n++) {
+	atomindex[n] = putident(primindex[n]);
+	atomidcount ++;
+	atomcharsused += strlen(primindex[n]);
+ }
 }
 
 int srchident(char *string)
 {
-/* looks down the idstore for an already existing ident */
+/* looks down the atomstore for an already existing ident */
 /* returns 0 (invalid index) if none found        */
+/* assumes that atomstore[n] == 0 if empty store slot */
 
 int srchindex;
-int c1 = *string;
+const char *c1;
 
 /*c1 = tolower (*string);*/
-for (srchindex = 1; srchindex < MAXATOMIDS ; srchindex++ )
+for (srchindex = 1; srchindex < MAXATOMS ; srchindex++ )
 {
-	if ( idindex[srchindex] 
-           && c1 == /* tolower*/ (*idindex[srchindex])
-           && strcmp(string,idindex[srchindex]) == 0 ) /* was strcasecmp */
-	{
-		return srchindex; /* found it */
+	if ( atomindex[srchindex])  {
+		c1 = ss_getstring( &atomstore[atomindex[srchindex]]);
+		if (strcmp(string,c1) == 0 ) { /* was strcasecmp */
+			return srchindex; /* found it */
+		}
 	}
 } /* end loop */
 return 0;
@@ -429,39 +449,31 @@ return 0;
 
 int putident (char *string)
 {
-/* stores the string away in the ident store, returning the index to it */
-/* accesses global data idstore, idstptr, idindex and idcount */
+/* stores the string away in the atomstore, returning the index to it */
 
-int res,length;
-
+int res,srchindex;
 /* searches for the string already there */
 if ((res = srchident(string)) != 0) return res;
-
-/* check for space still in the store, or slot numbers, before inserting */
-length = strlen(string);
-if (idstuse+length >= MAXATOMCHARS-1 || idcount == MAXATOMIDS - 1
-    || last_index_used == MAXATOMIDS - 1) {
-	if (string_garbage() < length )
+/* check for space still in slot numbers, before inserting */
+if (atomidcount == MAXATOMS - 1) {
+	if (string_garbage() )
 	{
-	    puts("Fatal: No more string space");
+	    puts("Fatal: No more atom/string space");
 	    exit (3);
 	}
 }
 
-/* always take the slot right after the current highest in-use slot --
-   never reuse a lower, previously-reclaimed slot out of order. This
-   keeps slot-index order in lock-step with idstore address order,
-   which string_garbage()'s compaction pass depends on. */
-res = last_index_used + 1;
-if (res >= MAXATOMIDS) {
-	puts("Fatal: Too many identifiers");
-	exit (3);
+for (srchindex = 1; srchindex < MAXATOMS ; srchindex++ ){
+	if (atomindex[srchindex] == 0) {
+		ss_store(&atomstore[srchindex], string);
+		atomindex[srchindex] = srchindex;
+		atomidcount ++;
+		atomcharsused += strlen(string);
+		return srchindex;
+	}
 }
-idcount++;
-idindex[res] = strcpy(idstptr,string); /* copy string in */
-idstuse += length+1;
-idstptr += length+1; /* allow for terminating 0 */
-return last_index_used = res;
+
+return 0;
 } /* end function putident */
 
 
@@ -469,67 +481,43 @@ return last_index_used = res;
 int string_garbage(void)
 {
 /* does a string storage garbage collection */
-int i, idsreclaimed = 0;
-size_t charsreclaimed = 0;
+/* returns atomslots reclaimed */
+int i, srchindex, a, idsreclaimed = 0;
+int charsreclaimed = 0, heapcharsreclaimed = 0;
 SLC *current;
-char *strptr;
-
+bool flagarr[MAXATOMS];
 
 /* loop through the main list, finding all id pointers */
-/* when found, set the msb of the character in the string store */
+/* when found, indicate */
 for (i=0, current = mlist ; i< targele ; i++ , current++) {
-       if (current->lstat == IDATOM && current->r.idval > maxprims) {
-	       strptr = idindex[current->r.idval];
-	       *strptr |= 0x80;
+       if (current->lstat == IDATOM) {
+	       flagarr[current->r.idval] = 1;
        }
  }
 
-/* go down the idindex, setting the pointer to NULL if the string */
-/* can be erased, otherwise moving the pointer to where the string */
-/* is going to be, moving string down the store, also clear the top bit */
-
-for(i = maxprims+1 ; i < MAXATOMIDS; i++ ) 
-    {
-    if (idindex[i])
-       {
-	       if (*idindex[i] & 0x80)
-	       {
-			strptr = idindex[i];
-			*strptr &= 0x7f; /* clear top bit */
-			if (charsreclaimed)
-			{
-				if (syslogyes) {
-				syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-				"recl: %s", idindex[i]);
-				}
-				idindex[i] -= charsreclaimed;
-				memmove (idindex[i] , strptr, strlen(strptr) + 1);
-			}  /* end if charsreclaimed */
-	       } else {
-			charsreclaimed += strlen( idindex[i] ) +1 ; 
-			idindex[i] = NULL;
-			idsreclaimed++;
-	      }  /* end if top bit not marked */
-       } /* end if */
+/* loop through atomstore looking for entries not flagged, */
+/* they can be collected */
+for (srchindex = 1; srchindex < MAXATOMS ; srchindex++ ){
+	if (flagarr[srchindex] == 0) {
+		a = atomindex[srchindex];
+		charsreclaimed += atomstore[a].len;
+		if (atomstore[a].isheap) {
+			heapcharsreclaimed += atomstore[a].len;
+		}
+		ss_free(atomstore[a]);
+		atomindex[a] = 0;
+		idsreclaimed += 1;
+	}
 } /* end for loop */
 
-/* pull the high-water mark back down past any now-empty trailing
-   slots, so putident() can reuse that space. Only the current top of
-   the used range is ever handed out again, keeping slot-index order
-   in lock-step with idstore address order. */
-while (last_index_used > maxprims && idindex[last_index_used] == NULL) {
-	last_index_used--;
-}
-
-idstptr -=  charsreclaimed;
-idstuse -= charsreclaimed;
-idcount -= idsreclaimed;
+atomidcount -= idsreclaimed;
+atomcharsused -= charsreclaimed;
 if (syslogyes) {
 	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-	"String gc: %zu chars, %d ids", charsreclaimed, idsreclaimed);
+	"String gc: %d chars, (heap %d), %d ids", charsreclaimed, heapcharsreclaimed, idsreclaimed);
 }
 if (garb_announce) {
-	sprintf (outbuf, " Strings reclaimed, %zu chars, %d ids\n",charsreclaimed, idsreclaimed);
+	sprintf (outbuf, "String gc, %d chars, (heap %d), %d ids\n",charsreclaimed, heapcharsreclaimed, idsreclaimed);
 	condpr (stdout);
 } /* end if announced */
 return charsreclaimed;
@@ -541,10 +529,49 @@ return charsreclaimed;
 char *getident(int index)
 {
 /* returns a string pointer to the id whose index is supplied */
-if (index < 1 || index > MAXATOMIDS - 1) {
+if (index < 1 || index > MAXATOMS - 1) {
 	puts("Fatal: invalid id");
 	exit(20);
 }
-return (char *)(idindex[index]);
+return ss_getstring(&atomstore[atomindex[index]]);
 } /* end function getident */
+
+void ss_store(SmallString *s, const char *src) {
+	size_t len = strlen(src);
+	s->len = len;
+
+	if (len < SSSIZE) {
+		/* Fits inline */
+		s->isheap = 0;
+		memcpy(s->data.inline_buf, src, len+1);
+	} else {
+		s->isheap = 1;
+		size_t cap = len+1;
+		s->data.heap.ptr = malloc(cap);
+		s->data.heap.capacity = cap;
+		memcpy(s->data.heap.ptr, src, cap);
+	}
+}
+
+char *ss_getstring(SmallString *s) {
+	if (s->isheap) {
+		return s->data.heap.ptr;
+	} else {
+		return s->data.inline_buf;
+	}
+}
+
+
+void ss_free(SmallString s) {
+	if (s.isheap) {
+		free(s.data.heap.ptr);
+		s.data.heap.ptr = NULL;
+	}
+	s.len = 0;
+	s.isheap = 0;
+}
+
+
+
+
 

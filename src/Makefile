@@ -7,7 +7,7 @@ objects = lexical.o main.o liststor.o prsexp.o \
 CFLAGS = -Wall -g 
 
 lisp: $(objects)
-	cc -o $@ $(objects) -lX11 -L/usr/X11/lib -lm
+	cc -o $@ $(objects) -Wall -pedantic -std=gnu2x -lX11 -L/usr/X11/lib -lm
 	mv lisp ~/bin/
 	sudo cp ~/bin/lisp /usr/local/bin/
 
