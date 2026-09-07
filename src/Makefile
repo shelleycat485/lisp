@@ -4,10 +4,10 @@
 objects = lexical.o main.o liststor.o prsexp.o \
 	turtgrap.o turtinf.o linenoise.o  \
 	compex.o
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g -pedantic -std=gnu2x
 
 lisp: $(objects)
-	cc -o $@ $(objects) -Wall -pedantic -std=gnu2x -lX11 -L/usr/X11/lib -lm
+	cc -o $@ $(objects) -lX11 -L/usr/X11/lib -lm
 	mv lisp ~/bin/
 	sudo cp ~/bin/lisp /usr/local/bin/
 

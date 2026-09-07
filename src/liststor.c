@@ -440,8 +440,10 @@ for (i=0, current = mlist ; i< targele ; i++ , current++) {
  }
 
 /* loop through atomstore looking for entries not flagged, */
-/* they can be collected */
-for (srchindex = 1; srchindex < MAXATOMS ; srchindex++ ){
+/* they can be collected -- start past maxprims so primitive names */
+/* (1..maxprims, registered once at startup and not necessarily */
+/* referenced by any live cell at collection time) are never reclaimed */
+for (srchindex = maxprims + 1; srchindex < MAXATOMS ; srchindex++ ){
 	if (atomindex[srchindex] != 0 && flagarr[srchindex] == 0) {
 		a = atomindex[srchindex];
 		charsreclaimed += atomstore[a].len;
