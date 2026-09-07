@@ -51,7 +51,10 @@
 
 (princ "before: ") (obl 2)
 
-(setq basechars (explode 'gcstress_))
+; lengthened from 'gcstress_' so every generated symbol (prefix + digits
+; of n) exceeds SSSIZE (15 in liststor.c's SmallString) and forces the
+; heap-allocation path in ss_store(), not just the inline buffer.
+(setq basechars (explode 'gcstress_heaptest_))
 
 (defun check_sym (n namechars sym)
   (cond ((not (equal (explode sym) namechars))
@@ -96,8 +99,8 @@
 (write outfh cr)
 (write outfh "results: ") (write outfh pass) (write outfh " passed, ")
 (write outfh fail) (write outfh " failed") (write outfh cr)
-(close outfh)
 
 (princ "done. pass=") (princ pass) (princ " fail=") (princ fail) (print cr)
 (princ "output written to test_gc_harness_output.txt") (print cr)
+(close outfh)
 (exit)

@@ -108,15 +108,66 @@ extern    int        atomcharsused; /* characters in idstore */
 extern    const int  maxprims; /* number of primitive operations */
 /* defs for main list access routines */
 
-extern SLC              *getfree(void);
-extern void             copycell (SLC *src, SLC *dest);
 extern void             initmainlist(void );
 extern SLC  *frlptr, *oblptr, *binlptr, *prlptr;
 int                    isnullcell  (SLC *inptr);
 extern SLC              *sear_oblist(SLC * inatom);
-extern void            mark_req (SLC *cell);
-extern void            mark_not (SLC *cell);
 extern void            garbage_coll(int totalwipe);
 extern void            recmark (SLC *cell);
 void check_keyboard(void);
+
+/* getfree/copycell/mark_req/mark_not defined here (not liststor.c) as
+   static inline so calls from every translation unit -- not just
+   liststor.c's own -- can actually be inlined by the compiler. */
+
+static inline void mark_req (SLC *cell)
+{
+/* sets the gcflagged bit in the cell, so any garbage collection */
+/* will retain the cell */
+if (cell) cell->gcflagged = 1;
+} /* end function mark_req */
+
+static inline void mark_not (SLC *cell)
+{
+/* clears the gcflagged bit in the cell, so any garbage collection */
+/* will return the cell to the free list */
+if (cell) cell->gcflagged = 0;
+} /* end function mark_not */
+
+static inline SLC *getfree(void)
+{
+/* returns the first cell from the free list */
+
+SLC *wkptr;
+
+if (!frlptr) {
+	garbage_coll(FALSE); /* not calling for a total wipe */
+}
+wkptr = frlptr;
+frlptr = frlptr->lefptr;
+wkptr->lstat = LSLST;
+wkptr->r.rigptr = NULL;
+wkptr->gcmark = 0;
+wkptr->gcflagged = 0;
+wkptr->lefptr = 0;
+wkptr->isfptr = 0;
+
+return wkptr;
+} /* end function getfree */
+
+static inline void copycell (SLC *src,SLC *dest)
+{
+/* copies the contents of the source to the destination  */
+/* the garbage collection bits are not explicitly copied */
+if (src) {
+	dest->lstat = src->lstat;
+	dest->isfptr = src->isfptr;
+	dest->lefptr = src->lefptr;
+	dest->r = src->r;
+} else {
+	dest->lstat = LSLST;
+	dest->r.rigptr = NULL;
+	dest->lefptr = 0;
+}
+} /* end function copycell */
 

@@ -61,7 +61,7 @@ typedef struct {
 
 int  string_garbage(void);
 char *ss_getstring(SmallString *s);
-void ss_free(SmallString s);
+void ss_free(SmallString *s);
 void ss_store(SmallString *s, const char *src);
 void initatomstore(void);
 
@@ -202,65 +202,8 @@ string_garbage();
 
 
 
-void mark_req (SLC *cell)
-{
-/* sets the gcflagged bit in the cell, so any garbage collection */
-/* will retain the cell */ 
-if (cell) cell->gcflagged = 1;
-} /* end function mark_req */
-
-
-
-
-void mark_not (SLC *cell)
-{
-/* clears the gcflagged bit in the cell, so any garbage collection */
-/* will return the cell to the free list */ 
-if (cell) cell->gcflagged = 0;
-} /* end function mark_req */
-
-
-
-
-SLC *getfree(void)
-{
-/* returns the first cell from the free list */
-
-SLC *wkptr;
-
-if (!frlptr) {
-	garbage_coll(FALSE); /* not calling for a total wipe */
-}
-wkptr = frlptr;
-frlptr = frlptr->lefptr;
-wkptr->lstat = LSLST;
-wkptr->r.rigptr = NULL;
-wkptr->gcmark = 0;
-wkptr->gcflagged = 0;
-wkptr->lefptr = 0;
-wkptr->isfptr = 0;
-
-return wkptr;
-} /* end function getfree */
-
-
-
-
-void copycell (SLC *src,SLC *dest)
-{
-/* copies the contents of the source to the destination  */
-/* the garbage collection bits are not explicitly copied */
-if (src) {
-	dest->lstat = src->lstat;
-	dest->isfptr = src->isfptr;
-	dest->lefptr = src->lefptr;
-	dest->r = src->r;
-} else {
-	dest->lstat = LSLST;
-	dest->r.rigptr = NULL;
-	dest->lefptr = 0;
-}
-} /* end function copycell */
+/* mark_req/mark_not/getfree/copycell are now defined in listspec.h as
+   static inline, so they're visible for inlining from every .c file. */
 
 
 SLC *sear_oblist (SLC *inatom)
@@ -414,10 +357,8 @@ int atomcharsused = 0;
 void initatomstore(void)
 {
  int n;
- for (n = 1; n < maxprims; n++) {
+ for (n = 1; n <= maxprims; n++) {
 	atomindex[n] = putident(primindex[n]);
-	atomidcount ++;
-	atomcharsused += strlen(primindex[n]);
  }
 }
 
@@ -487,6 +428,9 @@ int charsreclaimed = 0, heapcharsreclaimed = 0;
 SLC *current;
 bool flagarr[MAXATOMS];
 
+for (i = 0; i < MAXATOMS; i++) {
+	flagarr[i] = 0;
+}
 /* loop through the main list, finding all id pointers */
 /* when found, indicate */
 for (i=0, current = mlist ; i< targele ; i++ , current++) {
@@ -498,13 +442,13 @@ for (i=0, current = mlist ; i< targele ; i++ , current++) {
 /* loop through atomstore looking for entries not flagged, */
 /* they can be collected */
 for (srchindex = 1; srchindex < MAXATOMS ; srchindex++ ){
-	if (flagarr[srchindex] == 0) {
+	if (atomindex[srchindex] != 0 && flagarr[srchindex] == 0) {
 		a = atomindex[srchindex];
 		charsreclaimed += atomstore[a].len;
 		if (atomstore[a].isheap) {
 			heapcharsreclaimed += atomstore[a].len;
 		}
-		ss_free(atomstore[a]);
+		ss_free(&atomstore[a]);
 		atomindex[a] = 0;
 		idsreclaimed += 1;
 	}
@@ -562,13 +506,13 @@ char *ss_getstring(SmallString *s) {
 }
 
 
-void ss_free(SmallString s) {
-	if (s.isheap) {
-		free(s.data.heap.ptr);
-		s.data.heap.ptr = NULL;
+void ss_free(SmallString *s) {
+	if (s->isheap) {
+		free(s->data.heap.ptr);
+		s->data.heap.ptr = NULL;
 	}
-	s.len = 0;
-	s.isheap = 0;
+	s->len = 0;
+	s->isheap = 0;
 }
 
 
