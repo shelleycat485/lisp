@@ -356,9 +356,18 @@ int atomcharsused = 0;
 
 void initatomstore(void)
 {
+/* stores each primitive directly into its own slot n, bypassing
+   putident()/srchident() -- srchident()'s primitive fast-path would
+   otherwise "find" the name via primindex[] immediately and return
+   before putident() ever reaches the ss_store() call that actually
+   writes the string into atomstore[], leaving atomindex[n]==n
+   correctly set but atomstore[n] permanently empty */
  int n;
  for (n = 1; n <= maxprims; n++) {
-	atomindex[n] = putident(primindex[n]);
+	ss_store(&atomstore[n], primindex[n]);
+	atomindex[n] = n;
+	atomidcount++;
+	atomcharsused += strlen(primindex[n]);
  }
 }
 
