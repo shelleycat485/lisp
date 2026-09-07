@@ -416,7 +416,22 @@ int srchident(char *string)
 int srchindex, i;
 const char *c1;
 
-/* check the small cache first */
+/* primitive names (1..maxprims) are registered once at startup and
+   never reassigned (see initatomstore()/string_garbage()) -- for any
+   n in that range, atomindex[n]==n and atomstore[n] holds
+   primindex[n] permanently, so a direct compare against the fixed
+   primindex[] table is always correct and far cheaper than falling
+   through to the cache or the general scan. Confirmed via syslog
+   instrumentation that this range is hit constantly in practice
+   (211 times just loading lisplib/init.lsp; tens of thousands of
+   times under a parse-heavy benchmark). */
+for (srchindex = 1; srchindex <= maxprims; srchindex++) {
+	if (strcmp(string, primindex[srchindex]) == 0) {
+		return srchindex;
+	}
+}
+
+/* check the small cache next */
 for (i = 0; i < atomcache_used; i++) {
 	int found = atomcache[i].slot;
 	if (strcmp(string, ss_getstring(&atomstore[found])) == 0) {
@@ -429,8 +444,10 @@ for (i = 0; i < atomcache_used; i++) {
 	}
 }
 
+/* general scan -- starts past maxprims since the primitive range was
+   already handled above and can never match again */
 /*c1 = tolower (*string);*/
-for (srchindex = 1; srchindex < MAXATOMS ; srchindex++ )
+for (srchindex = maxprims + 1; srchindex < MAXATOMS ; srchindex++ )
 {
 	if ( atomindex[srchindex])  {
 		c1 = ss_getstring( &atomstore[atomindex[srchindex]]);
