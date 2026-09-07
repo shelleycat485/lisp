@@ -20,7 +20,7 @@
 
 (load 'lisplib/init.lsp)
 
-(setq outfh (open "test_mark_balance_output.txt" 'w))
+(setq outfh (open "test/test_mark_balance_output.txt" 'w))
 (setq pass 0)
 (setq fail 0)
 
@@ -115,5 +115,5 @@
 
 (princ "done. pass=") (princ pass) (princ " fail=") (princ fail)
 (print cr)
-(princ "output written to test_mark_balance_output.txt")
+(princ "output written to test/test_mark_balance_output.txt")
 (print cr)

@@ -25,7 +25,7 @@
 (load 'lisplib/init.lsp)
 (gcollon)   ; print a line for every GC cycle so we can see it actually ran
 
-(setq outfh (open "test_gc_harness_output.txt" 'w))
+(setq outfh (open "test/test_gc_harness_output.txt" 'w))
 (setq pass 0)
 (setq fail 0)
 
@@ -101,6 +101,6 @@
 (write outfh fail) (write outfh " failed") (write outfh cr)
 
 (princ "done. pass=") (princ pass) (princ " fail=") (princ fail) (print cr)
-(princ "output written to test_gc_harness_output.txt") (print cr)
+(princ "output written to test/test_gc_harness_output.txt") (print cr)
 (close outfh)
 (exit)

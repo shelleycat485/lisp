@@ -32,7 +32,7 @@ typedef struct listcell {
 	} r;
 } SLC ;
 
-#define SMALLSTORE 1
+#define SMALLSTORE 0
 
 #if SMALLSTORE
 /* number of atom ids allowed */

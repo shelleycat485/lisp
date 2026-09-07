@@ -362,14 +362,72 @@ void initatomstore(void)
  }
 }
 
+/* small move-to-front cache in front of srchident()'s linear scan.
+   Holds the last few distinct atom slots found, most-recently-found
+   entry first, so repeatedly-searched-for atoms (loop variables,
+   function names, primitives -- nothing is excluded) get found in a
+   handful of comparisons instead of a scan across the whole atomstore.
+   Invalidated wholesale by string_garbage(), since a GC pass can
+   reassign any slot number to a different string. */
+
+#define ATOMCACHE_SIZE 15
+
+typedef struct {
+	int slot;   /* atomindex/atomstore slot this entry names */
+} AtomCacheEntry;
+
+static AtomCacheEntry atomcache[ATOMCACHE_SIZE];
+static int atomcache_used = 0;   /* number of occupied entries, 0..ATOMCACHE_SIZE */
+
+void atomcache_invalidate(void)
+{
+	atomcache_used = 0;
+} /* end function atomcache_invalidate */
+
+/* move-to-front: any match, first find or repeat, ends up at index 0.
+   A fresh slot appends while there's room, otherwise displaces the
+   last (least-recently-found) entry. Either way only the range
+   between index 0 and the entry's landing point shifts -- no hit
+   counts, no comparisons, no shuffling past empty entries. */
+static void atomcache_record(int slot)
+{
+int i;
+
+for (i = 0; i < atomcache_used; i++) {
+	if (atomcache[i].slot == slot) break;
+}
+if (i == atomcache_used) {
+	/* not cached yet: append if there's room, else land on (evict) the last entry */
+	if (atomcache_used < ATOMCACHE_SIZE) atomcache_used++;
+	i = atomcache_used - 1;
+}
+for ( ; i > 0; i--) {
+	atomcache[i] = atomcache[i-1];
+}
+atomcache[0].slot = slot;
+} /* end function atomcache_record */
+
 int srchident(char *string)
 {
 /* looks down the atomstore for an already existing ident */
 /* returns 0 (invalid index) if none found        */
 /* assumes that atomstore[n] == 0 if empty store slot */
 
-int srchindex;
+int srchindex, i;
 const char *c1;
+
+/* check the small cache first */
+for (i = 0; i < atomcache_used; i++) {
+	int found = atomcache[i].slot;
+	if (strcmp(string, ss_getstring(&atomstore[found])) == 0) {
+		/* capture the match before recording -- atomcache_record()
+		   reorders the table (move-to-front shift), so re-reading
+		   atomcache[i] afterwards would return whatever ended up
+		   at index i post-shift, not the entry we actually matched */
+		atomcache_record(found);
+		return found;
+	}
+}
 
 /*c1 = tolower (*string);*/
 for (srchindex = 1; srchindex < MAXATOMS ; srchindex++ )
@@ -377,6 +435,7 @@ for (srchindex = 1; srchindex < MAXATOMS ; srchindex++ )
 	if ( atomindex[srchindex])  {
 		c1 = ss_getstring( &atomstore[atomindex[srchindex]]);
 		if (strcmp(string,c1) == 0 ) { /* was strcasecmp */
+			atomcache_record(srchindex);
 			return srchindex; /* found it */
 		}
 	}
@@ -427,6 +486,10 @@ int i, srchindex, a, idsreclaimed = 0;
 int charsreclaimed = 0, heapcharsreclaimed = 0;
 SLC *current;
 bool flagarr[MAXATOMS];
+
+/* any slot number a cache entry names could get reassigned to a
+   different string by the reclaim pass below */
+atomcache_invalidate();
 
 for (i = 0; i < MAXATOMS; i++) {
 	flagarr[i] = 0;
