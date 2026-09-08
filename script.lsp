@@ -1,6 +1,5 @@
 (gcollon)
-(setq wlist (rtfile 'itcotdc.txt))
-(procwlist wlist)
+(setq wlist (readtextfile 'itcotdc.txt))
 (printtree wtree)
 (exit)
 

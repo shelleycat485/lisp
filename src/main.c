@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.28"
+#define LISPVER "3.29"
 
 extern SLC *lx_eval                 (SLC *);
 extern SLC *lx_car                  (SLC *);
@@ -227,7 +227,8 @@ if (++fileguard > 10)
 }
 
 for(i=1; i < argc ; ++i){
-	strncpy(last_good_file, argv[i], SZ_LGF);
+	strncpy(last_good_file, argv[i], SZ_LGF-1);
+	last_good_file[SZ_LGF-1] = '\0';   /* strncpy doesn't guarantee this */
 	printf("...reading file %s\n", last_good_file);
 	read_file (last_good_file);
 } /* end i loop */

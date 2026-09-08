@@ -44,7 +44,7 @@ return wkptr;
 int is_a_num (SLC *form, int arr[], int allowed)
 {
 int j = 0;
-SLC *arg,*evalarg;
+SLC *arg,*evalarg=NULL;
 
 /* checks form is a number, or series of numbers, returns array of values */
 /* and count of them, input pointing to form */

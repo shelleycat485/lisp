@@ -4,7 +4,7 @@
 objects = lexical.o main.o liststor.o prsexp.o \
 	turtgrap.o turtinf.o linenoise.o  \
 	compex.o
-CFLAGS = -Wall -g -pedantic -std=gnu2x
+CFLAGS = -Wall -g -pedantic -std=gnu2x -O2 
 
 lisp: $(objects)
 	cc -o $@ $(objects) -lX11 -L/usr/X11/lib -lm
