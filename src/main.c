@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.27"
+#define LISPVER "3.28"
 
 extern SLC *lx_eval                 (SLC *);
 extern SLC *lx_car                  (SLC *);
@@ -694,7 +694,7 @@ SLC *nextf, *tf, *temp;
 
 int lambda_bind (SLC *formalargs, SLC *actualargs)
 {
-SLC *nextf, *nexta, *tf;
+SLC *nextf, *nexta, *tf, *nexta_raw;
 int numbound;
 
 /* does the binding of the lambda arguments onto the binding list */
@@ -718,7 +718,9 @@ while (isnullcell(formalargs)==FALSE) {
 	}
 	copycell (actualargs, nexta);
 	nexta->lefptr = 0;
+	nexta_raw = nexta; /* keep a handle on the pre-eval scratch cell */
 	mark_req(nexta = lx_eval(nexta)); /* eval the actual argument */
+	mark_not(nexta_raw); /* release it now that eval is done reading it */
 	/* put the new element at top of binding list */
 	tf->lefptr = binlptr;
 	binlptr = tf;
