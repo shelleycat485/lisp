@@ -2,7 +2,7 @@
 ( cond
   ((zerop depth) () )
   ( t
-   (setq side (/ side 4))
+   (setq side (/ side 2))
    (setq depth (- depth 1))
    (turn (* 90 (- 0 direction)))
    (hilbert depth side (- 0 direction))
@@ -13,8 +13,8 @@
    (hilbert depth side direction)
    (turn (* 90 direction))
    (move side)
-   (hilbert depth side direction)
-   (turn (* 90 direction))
+   (hilbert depth side (- 0 direction))
+   (turn (* 90 (- 0 direction)))
   )
 ))
 
@@ -22,14 +22,14 @@
 ( cond
  (( zerop  depth )( move  side ))
  ((minusp depth)
-     (dragon (- 0 (+ depth 1)) side)
+     (dragon (- 0 (+ depth 1)) (/ side 1.4142136))
      (turn 270)
-     (dragon (+ depth 1) side)
+     (dragon (+ depth 1) (/ side 1.4142136))
   )
  ( t 
-     (dragon (- depth 1) side)
+     (dragon (- depth 1) (/ side 1.4142136))
      (turn 90)
-     (dragon (- 0 (- depth 1)) side)
+     (dragon (- 0 (- depth 1)) (/ side 1.4142136))
   )
 ))
 
