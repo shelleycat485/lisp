@@ -295,19 +295,20 @@ char *primindex[80] =
 "minusp",
 "system",
 
-"plus",  /* 21 */
-"times",
-"difference",
-"divide",
+"+",  /* 21 */
+"*",
+"-",
+"/",
+"sqrt",
 "listp",
 "numberp",
 "atom",
 "null",
 "not",
-"length",
 
-"obl",  /* 31 */
-"print",  
+"length",  /* 31 */
+"obl",
+"print",
 "prin",
 "princ",
 "load",
@@ -315,9 +316,9 @@ char *primindex[80] =
 "explode",
 "append",
 "read",
-"open",
 
-"close",  /* 41 */
+"open",  /* 41 */
+"close",
 "put",
 "remprop",
 "get",
@@ -326,31 +327,31 @@ char *primindex[80] =
 "rplacd",
 "writec",
 "writen",
-"write",
 
-"reverse",  /* 51 */
+"write",  /* 51 */
+"reverse",
 "eq",
 "initturtle",
-"home", 
+"home",
 "pendown",
 "setfill",
 "pencolour",
 "fillcolour",
 "turn",
-"turnto",
 
-"move",  /* 61 */
+"turnto",  /* 61 */
+"move",
 "moveto",
 "circle",
-"ellipse", 
+"ellipse",
 "rectangle",
 "onscreen",
 "polygon",
-"let",  /* 68 */
-"compex" /* 69  testing compilations */
+"let",  /* 69 */
+"compex" /* 70  testing compilations */
  };
 
-const int maxprims = 69;
+const int maxprims = 70;
 int atomidcount = 0;
 int atomcharsused = 0;
 

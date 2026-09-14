@@ -78,6 +78,7 @@ extern int lex_sexp(FILE * infile, SLC **retval);
 #define DIFFERENCE 1
 #define TIMES 2
 #define DIVIDE 3
+#define SQRT 4
 
 #define NOEVAL 0
 #define EVAL   1

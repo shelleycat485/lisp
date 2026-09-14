@@ -11,10 +11,10 @@
  '(lambda lis (set (car lis) (cons (quote lambda) (cdr lis))))
 )
 
-(setq - 'difference)
-(setq + 'plus)
-(setq * 'times)
-(setq / 'divide)
+(setq difference '- )
+(setq plus '+ )
+(setq times '* )
+(setq divide '/ )
 
 (defun onep (n) (eq n 1) )
 (defun zerop (n) (eq n 0) )

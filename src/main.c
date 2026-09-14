@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.29"
+#define LISPVER "3.30"
 
 extern SLC *lx_eval                 (SLC *);
 extern SLC *lx_car                  (SLC *);
@@ -503,140 +503,143 @@ int redefs;
 			res = (lx_plus (form, DIVIDE));
 			break;
 		case 25:
-			res = (lx_listp (lx_eval(form->lefptr)));
+			res = (lx_plus (form, SQRT));
 			break;
 		case 26:
-			res = (lx_numberp (lx_eval(form->lefptr)));
+			res = (lx_listp (lx_eval(form->lefptr)));
 			break;
 		case 27:
-			res = (lx_atom (lx_eval(form->lefptr)));
+			res = (lx_numberp (lx_eval(form->lefptr)));
 			break;
 		case 28:
-		case 29:	
+			res = (lx_atom (lx_eval(form->lefptr)));
+			break;
+		case 29:
+		case 30:	
 			res = (lx_null (lx_eval(form->lefptr))); /* not  and null */
 			break;
-		case 30:
+		case 31:
 			res = lx_length (lx_eval(form->lefptr));
 			break;
-		case 31: 
+		case 32: 
 			res = lx_obl(lx_eval(form->lefptr));
 			break;
-		case 32:
+		case 33:
 			lx_prin(stdout,res = lx_eval(form->lefptr), SPACE, NOESC);
 			/* print operation - final cr */
 			break;
-		case 33:
+		case 34:
 			lx_prin(stdout,res = lx_eval(form->lefptr), NOSPACE, NOESC);
 			break;
-		case 34:
+		case 35:
 			/* princ - print with special chars escaped in */
 			lx_prin(stdout,res = lx_eval(form->lefptr), NOSPACE, ESC);
 			break;
-		case 35:
+		case 36:
 			lx_load(res = lx_eval(form->lefptr));
 			break;
-		case 36:
+		case 37:
 			res = lx_readch(lx_eval(form->lefptr));
 			break;
-		case 37:
+		case 38:
 			res = (lx_explode (lx_eval(form->lefptr)));
 			break;
-		case 38:
+		case 39:
 			res = lx_append(form);
 			break;
-		case 39:
+		case 40:
 			res = lx_read(lx_eval(form->lefptr));
 			break;
-		case 40:
+		case 41:
 			res = lx_open(form);
 			break;
-		case 41:
+		case 42:
 			res = lx_close(lx_eval(form->lefptr));
 			break;
-		case 42:
+		case 43:
 			res = lx_put(form);
 			break;
-		case 43:
+		case 44:
 			res = lx_remprop(form);
 			break;
-		case 44:
+		case 45:
 			res = lx_get(form);
 			break;
-		case 45:
+		case 46:
 			res = (lx_implode (lx_eval(form->lefptr)));
 			break;
-		case 46:
+		case 47:
 			res = lx_rplaca(form);
 			break;
-		case 47:
+		case 48:
 			res = lx_rplacd(form);
 			break;
-		case 48:
+		case 49:
 			/* writec - write with special chars escaped in */
 			res = lx_write(form, SPACE, ESC);
 			break;
-		case 49:
+		case 50:
 			/* writen - output like prin */
 			res = lx_write(form, NOSPACE, NOESC);
 			break;
-		case 50:
+		case 51:
 			res = lx_write(form, SPACE, NOESC); /* write */
 			break;
-		case 51:
+		case 52:
 			res = lx_reverse (lx_eval(form->lefptr));
 			break;
-		case 52:
+		case 53:
 			res = lx_eq(form);
 			break;
-		case 53:
+		case 54:
 			res = lx_initturtle (form);
 			break;
-		case 54:
+		case 55:
 			res = lx_home (form);
 			break;
-		case 55:
+		case 56:
 			res = lx_pendown (form);
 			break;
-		case 56:
+		case 57:
 			res = lx_setfill (form);
 			break;
-		case 57:
+		case 58:
 			res = lx_pencolour (form);
 			break;
-		case 58:
+		case 59:
 			res = lx_fillcolour (form);
 			break;
-		case 59:
+		case 60:
 			res = lx_turn (form);
 			break;
-		case 60:
+		case 61:
 			res = lx_turnto (form);
 			break;
-		case 61:
+		case 62:
 			res = lx_move (form);
 			break;
-		case 62:
+		case 63:
 			res = lx_moveto (form);
 			break;
-		case 63:
+		case 64:
 			res = lx_circle (form);
 			break;
-		case 64:
+		case 65:
 			res = lx_ellipse (form);
 			break;
-		case 65:
+		case 66:
 			res = lx_rectangle (form);
 			break;
-		case 66:
+		case 67:
 			res = lx_onscreen (form);
 			break;
-		case 67:
+		case 68:
 			res = lx_polygon (form);
 			break;
-		case 68:
+		case 69:
 			res = lx_let (form);
 			break;
-		case 69:
+		case 70:
 			res = lx_compex (form);
 			break;
 		default:
@@ -1510,6 +1513,27 @@ SLC *wkptr,*arg,*evalarg;
 
 /* does arithmetic on input, input pointing to form */
 /* fn gives the operation to do */
+
+if (fn == SQRT) {
+	if (isnullcell(form->lefptr) == TRUE) {
+		return report_error ("sqrt", "requires one argument", form, TRUE);
+	}
+	arg = form->lefptr;
+	evalarg = lx_eval(arg);
+	if (evalarg == NULL || evalarg->lstat != NUMATOM) {
+		return report_error ("sqrt", "argument not numeric", evalarg, TRUE);
+	}
+	if (arg->lefptr != NULL) {
+		return report_error ("sqrt", "too many arguments", form, TRUE);
+	}
+	if (evalarg->r.rigval < 0) {
+		return report_error ("sqrt", "argument must not be negative", evalarg, TRUE);
+	}
+	wkptr = getfree();
+	wkptr->lstat = NUMATOM;
+	wkptr->r.rigval = sqrtf(evalarg->r.rigval);
+	return wkptr;
+}
 
 if (isnullcell(form->lefptr)== FALSE) {
 	arg = form->lefptr;
