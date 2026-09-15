@@ -24,4 +24,4 @@
 ))
 
 (mapc 'prname aaa)
-
+(exit)
