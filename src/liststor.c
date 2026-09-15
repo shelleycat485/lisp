@@ -208,7 +208,10 @@ string_garbage();
 
 SLC *sear_oblist (SLC *inatom)
 {
-int inid, pass, guardcount;
+int inid, pass;
+#ifdef DEBUG
+int guardleft;
+#endif
 SLC *wkptr, *oblidptr;
 
 /* searches the oblist for an entry matching the id of the atom supplied */
@@ -224,7 +227,10 @@ if ((isnullcell(inatom)==FALSE) && (inatom->lstat == IDATOM)) {
 		syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
 			"start_search %d", inid);
 	}	
-	pass = guardcount = 1;
+	pass = 1;
+#ifdef DEBUG
+	guardleft = MAXLELE - 20;
+#endif
 	while (pass <= 2) {
 		if (pass == 1) {
 			wkptr = binlptr; /* first pass of outer loop */
@@ -242,10 +248,12 @@ if ((isnullcell(inatom)==FALSE) && (inatom->lstat == IDATOM)) {
 				return wkptr;
 			}
 			wkptr = wkptr->lefptr;
-			if (guardcount++ == (MAXLELE - 20) ){
+#ifdef DEBUG
+			if (--guardleft == 0){
 				puts("Lisp Error in sear_oblist");
 				longjmp (main_env, 2);
 			}
+#endif
 		} /* end loop */
 		pass++;
 	} /* end outer loop */
