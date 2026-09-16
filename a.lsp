@@ -243,6 +243,13 @@
     )
   )
 
+(defun fib1 (n)
+  (cond
+    ((or (onep n) (eq n 2)) 1 )
+    ( (true) (+ (fib (- n 1)) (fib (- n 2))) )
+    )
+  )
+
 (defun rmember (a lis)
   (cond
     ((null lis) () )
