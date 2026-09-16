@@ -474,7 +474,7 @@ for (srchindex = maxprims + 1; srchindex < MAXATOMS ; srchindex++ )
 {
 	if ( atomindex[srchindex])  {
 		c1 = ss_getstring( &atomstore[atomindex[srchindex]]);
-		if (strcmp(string,c1) == 0 ) { /* was strcasecmp */
+		if (*string == *c1 && strcmp(string,c1) == 0 ) { /* was strcasecmp */
 			atomcache_record(srchindex);
 			return srchindex; /* found it */
 		}
