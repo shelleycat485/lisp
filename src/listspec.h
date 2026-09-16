@@ -111,8 +111,9 @@ extern    const int  maxprims; /* number of primitive operations */
 
 extern void             initmainlist(void );
 extern SLC  *frlptr, *oblptr, *binlptr, *prlptr;
+extern SLC  *binl_floor; /* current frame's binding-list floor for sear_oblist pass 1 */
 int                    isnullcell  (SLC *inptr);
-extern SLC              *sear_oblist(SLC * inatom);
+extern SLC              *sear_oblist(SLC * inatom, int usefloor);
 extern void            garbage_coll(int totalwipe);
 extern void            recmark (SLC *cell);
 void check_keyboard(void);

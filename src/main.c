@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.31"
+#define LISPVER "3.32"
 
 extern SLC *lx_eval                 (SLC *);
 extern SLC *lx_car                  (SLC *);
@@ -362,7 +362,7 @@ int redefs;
 	} 
 
 	if (inptr->lstat == IDATOM) {
-		res1 = sear_oblist (inptr);
+		res1 = sear_oblist (inptr, FALSE);
 		if (res1 != NULL) {
 			/* get the oblist entry value */
 			res1 = res1->r.rigptr;
@@ -385,7 +385,7 @@ int redefs;
 
 	/*  try for redefinition - max two times */
 	redefs = 0;
-	res1 = sear_oblist(form);
+	res1 = sear_oblist(form, TRUE);
 	while (res1 && (redefs++ < 2)) {
 		/* look at oblist result */
 		res1 = res1->r.rigptr;
@@ -398,7 +398,7 @@ int redefs;
 		mark_not(form);
 		form = newform;
 		mark_req(form);
-	res1 = sear_oblist(form);
+	res1 = sear_oblist(form, TRUE);
 	} /* redefinition loop */
 
 	/* return null if null list contents */
@@ -760,7 +760,11 @@ return numbound;
 SLC *do_lambda(SLC *inptr, SLC *form)
 {
 SLC *formalargs,*actionptr,*actualargs,*res, *temp, *actiontop;
+SLC *saved_floor, *old_binlptr;
 int nbound;
+
+saved_floor = binl_floor;
+old_binlptr = binlptr;
 
 mark_req(actualargs= getfree());
 temp = inptr->r.rigptr;
@@ -793,6 +797,7 @@ if (isnullcell(formalargs)) {
 } else {
 	nbound = lambda_bind (formalargs,actualargs); /* a list of values */
 } /* end decision of formalargs type */
+binl_floor = old_binlptr;
 
 res = NULL;
 while (actionptr) {
@@ -809,6 +814,7 @@ while (nbound--) {
 		longjmp (main_env,4);
 	}
 }
+binl_floor = saved_floor;
 mark_not(actualargs);
 mark_not(formalargs);
 mark_not(actiontop);
@@ -2081,7 +2087,7 @@ if (a1ptr == NULL || a1ptr->lstat != IDATOM) {
 /* search returns a null if nothing found */
 newptr = NULL;
 if (!bindingflag) {
-  newptr= sear_oblist(a1ptr); /* only search if a set, if a binding always */
+  newptr= sear_oblist(a1ptr, FALSE); /* only search if a set, if a binding always */
                               /* want a new entry to be made.  A set function */
                               /* in a binding will still want a search */
 }

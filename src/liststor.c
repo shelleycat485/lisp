@@ -66,6 +66,7 @@ void ss_store(SmallString *s, const char *src);
 void initatomstore(void);
 
 SLC *frlptr, *oblptr, *binlptr, *prlptr;
+SLC *binl_floor = NULL;
 SLC *mlist ;
 static int targele = MAXLELE;
 
@@ -78,6 +79,7 @@ int ncells;
 /* create free list containing all cells */
 /* set up initial oblist and other pointers */
 oblptr = binlptr = prlptr = frlptr = mlist = NULL;
+binl_floor = NULL;
 
 while (mlist ==  NULL && targele > 0 )
   {
@@ -152,6 +154,7 @@ SLC *current;
 gcnum++; /* cycle round of this counter does not matter */
 if (totalwipe) {
 	frlptr = binlptr = NULL;
+	binl_floor = NULL;
 	/* if a total wipe, also clears all the gcflagged bits from all cells */
 	for (i=0, current = mlist; i< targele ;i++, current++) {
 	current->gcflagged = 0;
@@ -206,13 +209,13 @@ string_garbage();
    static inline, so they're visible for inlining from every .c file. */
 
 
-SLC *sear_oblist (SLC *inatom)
+SLC *sear_oblist (SLC *inatom, int usefloor)
 {
 int inid, pass;
 #ifdef DEBUG
 int guardleft;
 #endif
-SLC *wkptr, *oblidptr;
+SLC *wkptr, *oblidptr, *stopat;
 
 /* searches the oblist for an entry matching the id of the atom supplied */
 /* searches the binding list before the oblist */
@@ -234,10 +237,12 @@ if ((isnullcell(inatom)==FALSE) && (inatom->lstat == IDATOM)) {
 	while (pass <= 2) {
 		if (pass == 1) {
 			wkptr = binlptr; /* first pass of outer loop */
+			stopat = usefloor ? binl_floor : NULL;
 		} else {
 			wkptr = oblptr;  /* second pass of outer loop */
+			stopat = NULL;
 		}
-		while (wkptr) {
+		while (wkptr && wkptr != stopat) {
 			oblidptr = wkptr->r.rigptr;
 			if (inid == oblidptr->r.idval) {
 				/* found the id match */
