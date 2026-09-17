@@ -586,16 +586,30 @@ int string_garbage(void)
 int i, srchindex, a, idsreclaimed = 0;
 int charsreclaimed = 0, heapcharsreclaimed = 0;
 SLC *current;
-/* a VLA, sized to the current capacity rather than the MAXATOMS
-   ceiling -- same worst-case stack use as the fixed-size array this
-   replaced (atomcap can reach MAXATOMS), but far smaller in the much
-   more common case where atomcap hasn't grown that far yet */
-bool flagarr[atomcap];
+/* heap-allocated rather than a VLA: measured no slower in practice
+   (a malloc()+free() pair here is lost in the noise next to this
+   function's own O(targele) mark scan, and is actually faster than a
+   VLA at the largest sizes atomcap reaches), and a failed malloc()
+   gives a checkable, controlled failure -- unlike a VLA overflowing
+   the stack, which is undefined behaviour. That matters here
+   specifically: this is a recursive-descent evaluator, and
+   string_garbage() can be reached from garbage_coll() at an
+   arbitrary, unbounded recursion depth (exactly when cons-cell
+   exhaustion triggers it), so stack headroom at this point is not
+   guaranteed -- this build also has -fstack-clash-protection and
+   every -fstack-protector variant off, so a large VLA here would have
+   no hardening against that either. */
+bool *flagarr;
 
 /* any slot number a cache entry names could get reassigned to a
    different string by the reclaim pass below */
 atomcache_invalidate();
 
+flagarr = malloc(atomcap * sizeof(bool));
+if (flagarr == NULL) {
+	puts("Fatal: No flag array allocate");
+	exit(7);
+}
 for (i = 0; i < atomcap; i++) {
 	flagarr[i] = 0;
 }
@@ -634,6 +648,7 @@ if (garb_announce) {
 	sprintf (outbuf, "String gc, %d chars, (heap %d), %d ids\n",charsreclaimed, heapcharsreclaimed, idsreclaimed);
 	condpr (stdout);
 } /* end if announced */
+free(flagarr);
 return charsreclaimed;
 } /* end function string_garbage */
 
