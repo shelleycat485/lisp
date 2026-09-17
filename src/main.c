@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.34"
+#define LISPVER "3.35"
 
 extern SLC *lx_eval                 (SLC *);
 extern SLC *lx_car                  (SLC *);
@@ -1671,7 +1671,7 @@ if (inptr != NULL && inptr->lstat == NUMATOM) {
 			break;
 		case 2: 
 			/* stats on string storage */
-			sprintf( outbuf, "Chars %d out of %d,  Ids %d out of %d\n",atomcharsused,MAXATOMCHARS,atomidcount,MAXATOMS);
+			sprintf( outbuf, "Chars %d,  Ids %d out of %d\n",atomcharsused,atomidcount,atomcap);
 			condpr (stdout);
 			break;
 		case 3:

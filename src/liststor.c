@@ -64,6 +64,7 @@ char *ss_getstring(SmallString *s);
 void ss_free(SmallString *s);
 void ss_store(SmallString *s, const char *src);
 void initatomstore(void);
+void grow_atomstore(void);
 
 SLC *frlptr, *oblptr, *binlptr, *prlptr;
 SLC *binl_floor = NULL;
@@ -280,9 +281,26 @@ if ((inptr->lstat == LSLST) && (inptr->r.rigptr == NULL) && (inptr->lefptr == 0)
 
 
 
-SmallString atomstore[MAXATOMCHARS];
-int atomindex[MAXATOMS], *atomindptr = atomindex;
-char idstore[MAXATOMCHARS],*idstptr = idstore; 
+/* atomstore/atomindex are grown on demand by grow_atomstore() (see
+   below), starting from atomcap entries and doubling up to the hard
+   ceiling MAXATOMS. A slot's index number never changes once assigned;
+   only these two arrays' base addresses move, under realloc(), when
+   they grow.
+
+   Because of that, a char* returned by getident()/ss_getstring() is
+   only valid until the next call that can reach putident() (which may
+   realloc() and relocate this array) -- never hold one across such a
+   call. Existing callers comply: lx_system/lx_open/lx_prin use the
+   pointer synchronously, within the same statement or before any
+   further evaluation; lx_implode/lx_explode never hold a live pointer
+   into this array across their own putident() calls (lx_implode copies
+   one character at a time into its own local buffer and calls
+   putident() only once, after its loop finishes; lx_explode copies the
+   whole identifier into a local buffer before the loop that calls
+   putident() per character). */
+SmallString *atomstore = NULL;
+int *atomindex = NULL;
+int atomcap = 500;   /* current allocated slot capacity; grows toward MAXATOMS */
 char *primindex[80] =
  {
   "",
@@ -377,6 +395,15 @@ void initatomstore(void)
    writes the string into atomstore[], leaving atomindex[n]==n
    correctly set but atomstore[n] permanently empty */
  int n;
+
+ atomstore = malloc(atomcap * sizeof(SmallString));
+ atomindex = malloc(atomcap * sizeof(int));
+ if (atomstore == NULL || atomindex == NULL) {
+	puts("Fatal: No atom store allocate");
+	exit(6);
+ }
+ memset(atomindex, 0, atomcap * sizeof(int));
+
  for (n = 1; n <= maxprims; n++) {
 	ss_store(&atomstore[n], primindex[n]);
 	atomindex[n] = n;
@@ -470,7 +497,7 @@ for (i = 0; i < atomcache_used; i++) {
 /* general scan -- starts past maxprims since the primitive range was
    already handled above and can never match again */
 /*c1 = tolower (*string);*/
-for (srchindex = maxprims + 1; srchindex < MAXATOMS ; srchindex++ )
+for (srchindex = maxprims + 1; srchindex < atomcap ; srchindex++ )
 {
 	if ( atomindex[srchindex])  {
 		c1 = ss_getstring( &atomstore[atomindex[srchindex]]);
@@ -487,6 +514,31 @@ return 0;
 
 
 
+void grow_atomstore(void)
+{
+/* doubles atomcap, up to the hard ceiling MAXATOMS. Reallocs into
+   temporaries first and only commits atomstore/atomindex/atomcap once
+   both succeed -- growing one array but not the other would desync
+   them and corrupt every subsequent lookup. */
+int newcap;
+SmallString *newstore;
+int *newindex;
+
+newcap = atomcap * 2;
+if (newcap > MAXATOMS) newcap = MAXATOMS;
+
+newstore = realloc(atomstore, newcap * sizeof(SmallString));
+newindex = realloc(atomindex, newcap * sizeof(int));
+if (newstore == NULL || newindex == NULL) {
+	puts("Fatal: No atom store allocate");
+	exit(6);
+}
+atomstore = newstore;
+atomindex = newindex;
+memset(atomindex + atomcap, 0, (newcap - atomcap) * sizeof(int));
+atomcap = newcap;
+} /* end function grow_atomstore */
+
 int putident (char *string)
 {
 /* stores the string away in the atomstore, returning the index to it */
@@ -494,20 +546,25 @@ int putident (char *string)
 int res,srchindex;
 /* searches for the string already there */
 if ((res = srchident(string)) != 0) return res;
-/* check for space still in slot numbers, before inserting */
-if (atomidcount == MAXATOMS - 1) {
-	/* string_garbage() returns the number of chars it reclaimed, so
-	   0 means it found nothing to free -- genuinely out of room.
-	   A non-zero return means it freed space, so it's fine to
-	   continue below and reuse a slot it just cleared. */
-	if (string_garbage() == 0)
-	{
+/* check for space still in slot numbers, before inserting. Growing is
+   tried first, since it's cheap (a realloc), and only falls back to
+   the (expensive, full-heap-scanning) string_garbage() reclaim once
+   already at the hard ceiling MAXATOMS -- reclaiming first would run
+   that full scan at every growth step even when there's nothing yet
+   to reclaim. */
+if (atomidcount >= atomcap - 1) {
+	if (atomcap < MAXATOMS) {
+		grow_atomstore();
+	} else if (string_garbage() == 0) {
+		/* string_garbage() returns the number of chars it reclaimed,
+		   so 0 means it found nothing to free -- genuinely out of
+		   room, since we're already at the hard ceiling. */
 	    puts("Fatal: No more atom/string space");
 	    exit (3);
 	}
 }
 
-for (srchindex = 1; srchindex < MAXATOMS ; srchindex++ ){
+for (srchindex = 1; srchindex < atomcap ; srchindex++ ){
 	if (atomindex[srchindex] == 0) {
 		ss_store(&atomstore[srchindex], string);
 		atomindex[srchindex] = srchindex;
@@ -529,13 +586,17 @@ int string_garbage(void)
 int i, srchindex, a, idsreclaimed = 0;
 int charsreclaimed = 0, heapcharsreclaimed = 0;
 SLC *current;
-bool flagarr[MAXATOMS];
+/* a VLA, sized to the current capacity rather than the MAXATOMS
+   ceiling -- same worst-case stack use as the fixed-size array this
+   replaced (atomcap can reach MAXATOMS), but far smaller in the much
+   more common case where atomcap hasn't grown that far yet */
+bool flagarr[atomcap];
 
 /* any slot number a cache entry names could get reassigned to a
    different string by the reclaim pass below */
 atomcache_invalidate();
 
-for (i = 0; i < MAXATOMS; i++) {
+for (i = 0; i < atomcap; i++) {
 	flagarr[i] = 0;
 }
 /* loop through the main list, finding all id pointers */
@@ -550,7 +611,7 @@ for (i=0, current = mlist ; i< targele ; i++ , current++) {
 /* they can be collected -- start past maxprims so primitive names */
 /* (1..maxprims, registered once at startup and not necessarily */
 /* referenced by any live cell at collection time) are never reclaimed */
-for (srchindex = maxprims + 1; srchindex < MAXATOMS ; srchindex++ ){
+for (srchindex = maxprims + 1; srchindex < atomcap ; srchindex++ ){
 	if (atomindex[srchindex] != 0 && flagarr[srchindex] == 0) {
 		a = atomindex[srchindex];
 		charsreclaimed += atomstore[a].len;
@@ -582,7 +643,7 @@ return charsreclaimed;
 char *getident(int index)
 {
 /* returns a string pointer to the id whose index is supplied */
-if (index < 1 || index > MAXATOMS - 1) {
+if (index < 1 || index > atomcap - 1) {
 	puts("Fatal: invalid id");
 	exit(20);
 }

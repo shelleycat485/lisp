@@ -35,17 +35,15 @@ typedef struct listcell {
 #define SMALLSTORE 0
 
 #if SMALLSTORE
-/* number of atom ids allowed */
+/* hard ceiling on atom ids; the atom store starts small and grows
+   toward this via grow_atomstore() (see src/liststor.c) */
 #define MAXATOMS 1000
-/* character space for atoms */
-#define MAXATOMCHARS  6000
 /* main list number of cells */
 #define MAXLELE 6000
 #else
-/* number of atom ids allowed */
+/* hard ceiling on atom ids; the atom store starts small and grows
+   toward this via grow_atomstore() (see src/liststor.c) */
 #define MAXATOMS 256000
-/* character space for atoms */
-#define MAXATOMCHARS  500000
 /* main list number of cells */
 #define MAXLELE 5720000
 #endif
@@ -104,8 +102,9 @@ void condpr(FILE *fptr);
 extern    int        putident(char *);
 extern    int        srchident(char *);
 extern    char       *getident (int);
-extern    int        atomidcount; /* identifiers in idstore index */
-extern    int        atomcharsused; /* characters in idstore */
+extern    int        atomidcount; /* identifiers currently stored in atomstore/atomindex */
+extern    int        atomcharsused; /* characters currently stored in atomstore */
+extern    int        atomcap; /* current allocated capacity of atomstore/atomindex, grows toward MAXATOMS */
 extern    const int  maxprims; /* number of primitive operations */
 /* defs for main list access routines */
 
