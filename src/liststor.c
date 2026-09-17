@@ -496,7 +496,11 @@ int res,srchindex;
 if ((res = srchident(string)) != 0) return res;
 /* check for space still in slot numbers, before inserting */
 if (atomidcount == MAXATOMS - 1) {
-	if (string_garbage() )
+	/* string_garbage() returns the number of chars it reclaimed, so
+	   0 means it found nothing to free -- genuinely out of room.
+	   A non-zero return means it freed space, so it's fine to
+	   continue below and reuse a slot it just cleared. */
+	if (string_garbage() == 0)
 	{
 	    puts("Fatal: No more atom/string space");
 	    exit (3);
