@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.36"
+#define LISPVER "3.37"
 
 extern SLC *lx_eval                 (SLC *);
 extern SLC *lx_car                  (SLC *);

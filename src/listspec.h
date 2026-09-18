@@ -18,12 +18,15 @@
 
 /* file listspec.h */
 
+#include <stdbool.h>
+#include <stdint.h>
+
 typedef struct listcell {
-	unsigned  lstat : 3;
-	unsigned  isfptr : 1;
-	unsigned  gcmark : 1;
-	unsigned  gcflagged : 1;
-	struct listcell *lefptr; 
+	uint8_t lstat;
+	bool    isfptr;
+	bool    gcmark;
+	bool    gcflagged;
+	struct listcell *lefptr;
 	union {
 		struct listcell *rigptr;
 		float  rigval;
