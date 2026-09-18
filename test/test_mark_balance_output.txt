@@ -1,0 +1,21 @@
+ mark_req/mark_not regression test  
+  ===================================  
+  get after put   ... PASS  got=  111  
+  get after remprop   ... PASS  got= () 
+  rplaca replaces car   ... PASS  got= ( 99  2  3 ) 
+  rplacd replaces cdr   ... PASS  got= ( 1 ( 8  9 )) 
+  
+  stress loop: put/get/remprop/rplaca/rplacd under GC pressure  
+  stress loop had zero mismatches   ... PASS  got=  0  
+  
+  results:   5   passed,   0   failed  
+  
+  NOTE: the error branches of remprop/rplaca/rplacd (the  
+  code paths that were actually leaking a mark before this  
+  session's fix) are not exercised here - they call  
+  report_error(), whose Abort/Trace/Return prompt needs a  
+  real interactive terminal. To check those by hand, run  
+  lisp interactively and try e.g. (rplaca 5 6), (rplacd 5 6),  
+  (remprop) - each should print the error and let you  
+  continue (Trace/Return) without the interpreter wedging.  
+ 

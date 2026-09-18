@@ -80,7 +80,10 @@ SLC *lx_compex(SLC *form)
 
   // this works return lx_cdr(form);
   // this works return lx_car(form);
-  return lx_or(form);
+  SLC *ret = getfree();
+  ret->lstat = NUMATOM;
+  ret->r.rigval = sizeof(SLC);
+  return ret;
 } /* end function lx_compex */
 
 
