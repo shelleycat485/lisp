@@ -54,8 +54,11 @@ typedef struct {
 			size_t capacity;
 		} heap;
 	} data;
-	size_t len;
+	unsigned int len;
 	unsigned char isheap;
+	signed char height;   /* AVL height of the subtree rooted here, leaf = 1 */
+	int less;             /* slot of subtree of strings < this one, 0 = none */
+	int more;             /* slot of subtree of strings > this one, 0 = none */
 } SmallString;
 
 
@@ -381,16 +384,98 @@ const int maxprims = 70;
 int atomidcount = 0;
 int atomcharsused = 0;
 
+/* The atom store doubles as a height-balanced (AVL) binary search tree
+   keyed on the identifier string. SmallString.less / .more hold the
+   atomstore slot number of the subtree of strings that compare lower /
+   higher (0 = none; slot 0 is never used). Links are slot numbers, not
+   pointers, so they stay valid when grow_atomstore() realloc()s the
+   array. Rebalancing only re-links nodes -- no node ever moves within
+   atomstore -- so atomindex[id] == id always holds and nothing in
+   atomindex ever needs adjusting. (A variant that re-laid nodes out
+   would need an id back-pointer in each node to fix atomindex up.) */
+
+static int atomroot = 0;   /* slot of the tree root, 0 = empty */
+static int atomnext = 1;   /* next never-used slot/id; set by initatomstore() */
+
+static int node_height(int slot)
+{
+	return slot ? atomstore[slot].height : 0;
+}
+
+static void update_height(int slot)
+{
+int hl = node_height(atomstore[slot].less);
+int hr = node_height(atomstore[slot].more);
+
+	atomstore[slot].height = (signed char)((hl > hr ? hl : hr) + 1);
+}
+
+static int rotate_right(int slot)
+{
+int pivot = atomstore[slot].less;
+
+	atomstore[slot].less = atomstore[pivot].more;
+	atomstore[pivot].more = slot;
+	update_height(slot);
+	update_height(pivot);
+	return pivot;
+}
+
+static int rotate_left(int slot)
+{
+int pivot = atomstore[slot].more;
+
+	atomstore[slot].more = atomstore[pivot].less;
+	atomstore[pivot].less = slot;
+	update_height(slot);
+	update_height(pivot);
+	return pivot;
+}
+
+/* links the already-stored node newslot into the subtree rooted at root
+   and returns the (possibly new) subtree root. The caller has already
+   checked that the string is absent. Recursion depth is the AVL height,
+   at most about 27 for MAXATOMS nodes. */
+static int avl_insert(int root, int newslot)
+{
+int balance;
+
+	if (root == 0) return newslot;
+	if (strcmp(ss_getstring(&atomstore[newslot]),
+	           ss_getstring(&atomstore[root])) < 0) {
+		atomstore[root].less = avl_insert(atomstore[root].less, newslot);
+	} else {
+		atomstore[root].more = avl_insert(atomstore[root].more, newslot);
+	}
+	update_height(root);
+	balance = node_height(atomstore[root].less) - node_height(atomstore[root].more);
+	if (balance > 1) {
+		int l = atomstore[root].less;
+		if (node_height(atomstore[l].less) < node_height(atomstore[l].more)) {
+			atomstore[root].less = rotate_left(l);   /* left-right case */
+		}
+		return rotate_right(root);
+	}
+	if (balance < -1) {
+		int r = atomstore[root].more;
+		if (node_height(atomstore[r].more) < node_height(atomstore[r].less)) {
+			atomstore[root].more = rotate_right(r);  /* right-left case */
+		}
+		return rotate_left(root);
+	}
+	return root;
+} /* end function avl_insert */
+
 void initatomstore(void)
 {
-/* stores each primitive directly into its own slot n, bypassing
-   putident()/srchident() -- srchident()'s primitive fast-path would
-   otherwise "find" the name via primindex[] immediately and return
-   before putident() ever reaches the ss_store() call that actually
-   writes the string into atomstore[], leaving atomindex[n]==n
-   correctly set but atomstore[n] permanently empty */
+/* stores each primitive directly into its own slot n, so that primitive
+   n keeps id n (lx_eval() switches on those numbers), bypassing
+   putident() -- which would hand out the next free slot instead -- and
+   then links it into the tree */
  int n;
 
+ atomroot = 0;
+ atomnext = maxprims + 1;
  atomstore = malloc(atomcap * sizeof(SmallString));
  atomindex = malloc(atomcap * sizeof(int));
  if (atomstore == NULL || atomindex == NULL) {
@@ -404,105 +489,25 @@ void initatomstore(void)
 	atomindex[n] = n;
 	atomidcount++;
 	atomcharsused += strlen(primindex[n]);
+	atomroot = avl_insert(atomroot, n);
  }
 }
 
-/* small move-to-front cache in front of srchident()'s linear scan.
-   Holds the last few distinct atom slots found, most-recently-found
-   entry first, so repeatedly-searched-for atoms (loop variables,
-   function names, primitives -- nothing is excluded) get found in a
-   handful of comparisons instead of a scan across the whole atomstore.
-   Invalidated wholesale by string_garbage(), since a GC pass can
-   reassign any slot number to a different string. */
-
-#define ATOMCACHE_SIZE 15
-
-typedef struct {
-	int slot;   /* atomindex/atomstore slot this entry names */
-} AtomCacheEntry;
-
-static AtomCacheEntry atomcache[ATOMCACHE_SIZE];
-static int atomcache_used = 0;   /* number of occupied entries, 0..ATOMCACHE_SIZE */
-
-void atomcache_invalidate(void)
-{
-	atomcache_used = 0;
-} /* end function atomcache_invalidate */
-
-/* move-to-front: any match, first find or repeat, ends up at index 0.
-   A fresh slot appends while there's room, otherwise displaces the
-   last (least-recently-found) entry. Either way only the range
-   between index 0 and the entry's landing point shifts -- no hit
-   counts, no comparisons, no shuffling past empty entries. */
-static void atomcache_record(int slot)
-{
-int i;
-
-for (i = 0; i < atomcache_used; i++) {
-	if (atomcache[i].slot == slot) break;
-}
-if (i == atomcache_used) {
-	/* not cached yet: append if there's room, else land on (evict) the last entry */
-	if (atomcache_used < ATOMCACHE_SIZE) atomcache_used++;
-	i = atomcache_used - 1;
-}
-for ( ; i > 0; i--) {
-	atomcache[i] = atomcache[i-1];
-}
-atomcache[0].slot = slot;
-} /* end function atomcache_record */
-
 int srchident(char *string)
 {
-/* looks down the atomstore for an already existing ident */
-/* returns 0 (invalid index) if none found        */
-/* assumes that atomstore[n] == 0 if empty store slot */
+/* looks the string up in the atom tree. Returns its id -- which equals
+   its atomstore slot, see the note above -- or 0 (invalid index) if the
+   string is not present. Iterative: a lookup never recurses. */
 
-int srchindex, i;
-const char *c1;
+int slot = atomroot;
+int cmp;
 
-/* primitive names (1..maxprims) are registered once at startup and
-   never reassigned (see initatomstore()/string_garbage()) -- for any
-   n in that range, atomindex[n]==n and atomstore[n] holds
-   primindex[n] permanently, so a direct compare against the fixed
-   primindex[] table is always correct and far cheaper than falling
-   through to the cache or the general scan. Confirmed via syslog
-   instrumentation that this range is hit constantly in practice
-   (211 times just loading lisplib/init.lsp; tens of thousands of
-   times under a parse-heavy benchmark). */
-for (srchindex = 1; srchindex <= maxprims; srchindex++) {
-	if (strcmp(string, primindex[srchindex]) == 0) {
-		return srchindex;
+	while (slot) {
+		cmp = strcmp(string, ss_getstring(&atomstore[slot]));
+		if (cmp == 0) return slot;
+		slot = (cmp < 0) ? atomstore[slot].less : atomstore[slot].more;
 	}
-}
-
-/* check the small cache next */
-for (i = 0; i < atomcache_used; i++) {
-	int found = atomcache[i].slot;
-	if (strcmp(string, ss_getstring(&atomstore[found])) == 0) {
-		/* capture the match before recording -- atomcache_record()
-		   reorders the table (move-to-front shift), so re-reading
-		   atomcache[i] afterwards would return whatever ended up
-		   at index i post-shift, not the entry we actually matched */
-		atomcache_record(found);
-		return found;
-	}
-}
-
-/* general scan -- starts past maxprims since the primitive range was
-   already handled above and can never match again */
-/*c1 = tolower (*string);*/
-for (srchindex = maxprims + 1; srchindex < atomcap ; srchindex++ )
-{
-	if ( atomindex[srchindex])  {
-		c1 = ss_getstring( &atomstore[atomindex[srchindex]]);
-		if (*string == *c1 && strcmp(string,c1) == 0 ) { /* was strcasecmp */
-			atomcache_record(srchindex);
-			return srchindex; /* found it */
-		}
-	}
-} /* end loop */
-return 0;
+	return 0;
 } /* end function srchident */
 
 
@@ -514,7 +519,8 @@ void grow_atomstore(void)
 /* doubles atomcap, up to the hard ceiling MAXATOMS. Reallocs into
    temporaries first and only commits atomstore/atomindex/atomcap once
    both succeed -- growing one array but not the other would desync
-   them and corrupt every subsequent lookup. */
+   them and corrupt every subsequent lookup. The atom tree's less/more
+   links are slot numbers, so the array moving needs no fix-up. */
 int newcap;
 SmallString *newstore;
 int *newindex;
@@ -536,115 +542,47 @@ atomcap = newcap;
 
 int putident (char *string)
 {
-/* stores the string away in the atomstore, returning the index to it */
+/* stores the string away in the atomstore and links it into the atom
+   tree, returning its id (index into atomindex). A string that is
+   already present returns its existing id. */
 
-int res,srchindex;
+int id;
+
 /* searches for the string already there */
-if ((res = srchident(string)) != 0) return res;
-/* check for space still in slot numbers, before inserting. Growing is
-   tried first, since it's cheap (a realloc), and only falls back to
-   the (expensive, full-heap-scanning) string_garbage() reclaim once
-   already at the hard ceiling MAXATOMS -- reclaiming first would run
-   that full scan at every growth step even when there's nothing yet
-   to reclaim. */
-if (atomidcount >= atomcap - 1) {
+if ((id = srchident(string)) != 0) return id;
+/* ids/slots are handed out sequentially and never reused (string GC is
+   disabled), so the store is full once the next slot is past the end.
+   Growing is a cheap realloc, and needs no tree fix-up since the links
+   are slot numbers. At the hard ceiling MAXATOMS there is nothing left
+   to reclaim, so running out is fatal. */
+if (atomnext >= atomcap) {
 	if (atomcap < MAXATOMS) {
 		grow_atomstore();
-	} else if (string_garbage() == 0) {
-		/* string_garbage() returns the number of chars it reclaimed,
-		   so 0 means it found nothing to free -- genuinely out of
-		   room, since we're already at the hard ceiling. */
-	    puts("Fatal: No more atom/string space");
-	    exit (3);
+	} else {
+		puts("Fatal: No more atom/string space");
+		exit (3);
 	}
 }
 
-for (srchindex = 1; srchindex < atomcap ; srchindex++ ){
-	if (atomindex[srchindex] == 0) {
-		ss_store(&atomstore[srchindex], string);
-		atomindex[srchindex] = srchindex;
-		atomidcount ++;
-		atomcharsused += strlen(string);
-		return srchindex;
-	}
-}
-
-return 0;
+id = atomnext++;
+ss_store(&atomstore[id], string);
+atomindex[id] = id;
+atomidcount ++;
+atomcharsused += strlen(string);
+atomroot = avl_insert(atomroot, id);
+return id;
 } /* end function putident */
 
 
 
 int string_garbage(void)
 {
-/* does a string storage garbage collection */
-/* returns atomslots reclaimed */
-int i, srchindex, a, idsreclaimed = 0;
-int charsreclaimed = 0, heapcharsreclaimed = 0;
-SLC *current;
-/* heap-allocated rather than a VLA: measured no slower in practice
-   (a malloc()+free() pair here is lost in the noise next to this
-   function's own O(targele) mark scan, and is actually faster than a
-   VLA at the largest sizes atomcap reaches), and a failed malloc()
-   gives a checkable, controlled failure -- unlike a VLA overflowing
-   the stack, which is undefined behaviour. That matters here
-   specifically: this is a recursive-descent evaluator, and
-   string_garbage() can be reached from garbage_coll() at an
-   arbitrary, unbounded recursion depth (exactly when cons-cell
-   exhaustion triggers it), so stack headroom at this point is not
-   guaranteed -- this build also has -fstack-clash-protection and
-   every -fstack-protector variant off, so a large VLA here would have
-   no hardening against that either. */
-bool *flagarr;
-
-/* any slot number a cache entry names could get reassigned to a
-   different string by the reclaim pass below */
-atomcache_invalidate();
-
-flagarr = malloc(atomcap * sizeof(bool));
-if (flagarr == NULL) {
-	puts("Fatal: No flag array allocate");
-	exit(7);
-}
-for (i = 0; i < atomcap; i++) {
-	flagarr[i] = 0;
-}
-/* loop through the main list, finding all id pointers */
-/* when found, indicate */
-for (i=0, current = mlist ; i< targele ; i++ , current++) {
-       if (current->lstat == IDATOM) {
-	       flagarr[current->r.idval] = 1;
-       }
- }
-
-/* loop through atomstore looking for entries not flagged, */
-/* they can be collected -- start past maxprims so primitive names */
-/* (1..maxprims, registered once at startup and not necessarily */
-/* referenced by any live cell at collection time) are never reclaimed */
-for (srchindex = maxprims + 1; srchindex < atomcap ; srchindex++ ){
-	if (atomindex[srchindex] != 0 && flagarr[srchindex] == 0) {
-		a = atomindex[srchindex];
-		charsreclaimed += atomstore[a].len;
-		if (atomstore[a].isheap) {
-			heapcharsreclaimed += atomstore[a].len;
-		}
-		ss_free(&atomstore[a]);
-		atomindex[a] = 0;
-		idsreclaimed += 1;
-	}
-} /* end for loop */
-
-atomidcount -= idsreclaimed;
-atomcharsused -= charsreclaimed;
-if (syslogyes) {
-	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-	"String gc: %d chars, (heap %d), %d ids", charsreclaimed, heapcharsreclaimed, idsreclaimed);
-}
-if (garb_announce) {
-	sprintf (outbuf, "String gc, %d chars, (heap %d), %d ids\n",charsreclaimed, heapcharsreclaimed, idsreclaimed);
-	condpr (stdout);
-} /* end if announced */
-free(flagarr);
-return charsreclaimed;
+/* TRIAL: string storage garbage collection is disabled. Identifiers and
+   their heap strings are never reclaimed, so the atom tree only grows
+   and putident() hits its fatal ceiling once MAXATOMS ids exist. Returns
+   the number of chars reclaimed, which is always 0. ss_free() is unused
+   for now. */
+	return 0;
 } /* end function string_garbage */
 
 
@@ -662,7 +600,10 @@ return ss_getstring(&atomstore[atomindex[index]]);
 
 void ss_store(SmallString *s, const char *src) {
 	size_t len = strlen(src);
-	s->len = len;
+	s->len = (unsigned int)len;
+	s->height = 1;
+	s->less = 0;
+	s->more = 0;
 
 	if (len < SSSIZE) {
 		/* Fits inline */
