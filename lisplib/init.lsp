@@ -265,3 +265,60 @@
 
 
 
+
+; (closure fn) makes a closure of the function fn and returns it as a NEW
+; SYMBOL (a makesym atom) that can be called, e.g.
+;    (setq closed_func1 (closure func1))
+;    (closed_func1 3)
+; fn is a lambda expression such as the value of a defun'd name, or the
+; name itself: (closure func1) and (closure 'func1) both work.
+;
+; This lisp is dynamically scoped, so an ordinary function looks its free
+; variables up in whoever happens to be calling it.  A closure instead
+; remembers the free variables of fn as they are at the moment (closure)
+; is called:  every free variable of fn (a variable that is not one of fn's
+; own parameters, but is bound in the calling environment, e.g. by an
+; enclosing lambda or let) is renamed to a fresh private symbol which is
+; given that variable's current value.  So the closed function keeps working
+; after the environment that made it has gone, each closure has its own
+; private copy, and a setq inside the closure changes that private copy
+; and keeps the change between calls.
+; Limits: variables that are global rather than bound in a frame are left
+; alone, and the renaming applies to every occurrence of the name in fn's
+; body, including inside a quote.
+(defun closure (closure_fn_)
+  (let ( (closure_env_ (bindings))  ; ((name value)...) of all live variables
+         (closure_body_ ())
+         (closure_atoms_ ())
+         (closure_params_ ())
+         (closure_seen_ ())
+         (closure_var_ ())
+         (closure_ent_ ())
+         (closure_cell_ ())
+         (closure_sym_ (makesym)) )
+    (cond ((atom closure_fn_) (setq closure_fn_ (eval closure_fn_))))
+    (setq closure_params_ (cadr closure_fn_))
+    (cond ((atom closure_params_)
+           (setq closure_params_ (list closure_params_))))
+    (setq closure_body_ (cddr closure_fn_))
+    (setq closure_atoms_ (flatten closure_body_))
+    (loop
+      (while closure_atoms_)
+      (setq closure_var_ (car closure_atoms_))
+      (setq closure_ent_ (assoc closure_var_ closure_env_))
+      (cond
+        ( (and closure_ent_
+               (not (member closure_var_ closure_params_))
+               (not (member closure_var_ closure_seen_)) )
+          (setq closure_seen_ (cons closure_var_ closure_seen_))
+          (setq closure_cell_ (makesym))
+          (set closure_cell_ (cadr closure_ent_))
+          (setq closure_body_
+                (subst closure_var_ closure_cell_ closure_body_)) ) )
+      (setq closure_atoms_ (cdr closure_atoms_))
+    )
+    (set closure_sym_
+         (append (list 'lambda (cadr closure_fn_)) closure_body_))
+    closure_sym_
+  )
+)
