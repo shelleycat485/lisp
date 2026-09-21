@@ -83,4 +83,5 @@
 (put   'onscreen 'helptext "Return 1 if pen is on screen" )
 (put   'polygon 'helptext "(polygon nsides length) Draw a polygon, does this by lines, cannot be filled" )
 (put   'let 'helptext "Defines local variables in function (let ((c ()) (d 3)) rest of function). Note nested list construction of variable name/initial values. See rev for example" )
+(put   'defined 'helptext "(defined x) true if the atom x is already defined (has a value or is a Subr), else null. An atom x is not evaluated so it can be undefined. A list such as (defined 'x) is evaluated first and the atom it gives is tested" )
 

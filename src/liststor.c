@@ -377,10 +377,12 @@ char *primindex[80] =
 "onscreen",
 "polygon",
 "let",  /* 69 */
-"compex" /* 70  testing compilations */
+"compex", /* 70  testing compilations */
+ 
+ "defined" /* 71 */
  };
 
-const int maxprims = 70;
+const int maxprims = 71;
 int atomidcount = 0;
 int atomcharsused = 0;
 

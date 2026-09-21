@@ -33,9 +33,10 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.39"
+#define LISPVER "3.40"
 
 extern SLC *lx_eval                 (SLC *);
+SLC *lx_eval_internal               (SLC *, bool);
 extern SLC *lx_car                  (SLC *);
 extern SLC *lx_cdr                  (SLC *);
 extern SLC *lx_cons                 (SLC *);
@@ -77,6 +78,7 @@ extern SLC *lx_system               (SLC *);
 extern SLC *lx_rplaca               (SLC *);
 extern SLC *lx_rplacd               (SLC *);
 extern SLC *lx_ordinal              (SLC *);
+extern SLC *lx_defined              (SLC *);
 
 extern void syslog_form(SLC* form);
 
@@ -344,7 +346,13 @@ void check_keyboard(void)
 	}
 } /* end function check_keyboard */
 
-SLC *lx_eval (SLC *inptr)
+
+SLC *lx_eval (SLC *input)
+{
+	return lx_eval_internal(input, FALSE);
+}
+
+SLC *lx_eval_internal (SLC *inptr, bool isdefinedflag)
 {
 SLC *form, *newform, *res, *res1;
 int redefs;
@@ -364,15 +372,28 @@ int redefs;
 	if (inptr->lstat == IDATOM) {
 		res1 = sear_oblist (inptr);
 		if (res1 != NULL) {
+			if (isdefinedflag) {
+				res = lx_true();
+				goto endeval;
+			}
 			/* get the oblist entry value */
 			res1 = res1->r.rigptr;
 			res = res1->lefptr;
 		} else if (inptr->r.idval > maxprims) {
+			if (isdefinedflag) {
+				res = NULL;
+				goto endeval;
+			} else {
 			sprintf(outbuf, "Error: %s had no value here\n\r",getident(inptr->r.idval));
 			condpr (stdout);
 			trace = TRUE;
+			}
 		} else {
 			/* is a primitive */
+			if (isdefinedflag) {
+				res = lx_true();
+				goto endeval;
+			}
 			res = getfree();
 			res->lstat = IDATOM;
 			res->r.idval = putident("Subr");
@@ -641,6 +662,9 @@ int redefs;
 			break;
 		case 70:
 			res = lx_compex (form);
+			break;
+		case 71:
+			res = lx_defined(form->lefptr);
 			break;
 		default:
 			report_error ("eval", "non translatable list name", form, TRUE);
@@ -1243,6 +1267,23 @@ return res;
 } /* end function lx_ordinal */
 
 
+SLC *lx_defined(SLC *arg)
+{
+  /* (defined x) gives true if the atom x is already defined (it has a value,
+     or is a primitive), else null.  The argument is not evaluated when it is
+     an atom, so x can be an atom that is not defined yet.  A list, e.g.
+     (defined 'x), is evaluated and the atom it gives is tested. */
+SLC *name = arg;
+
+if (name != NULL && name->lstat != IDATOM) {
+	name = lx_eval(name);
+}
+if (name == NULL || name->lstat != IDATOM) {
+	return report_error ("defined", "requires an atom", name, TRUE);
+}
+return lx_eval_internal(name, true);
+
+}  /* end lx_defined */
 
 
 
