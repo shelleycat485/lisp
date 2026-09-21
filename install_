@@ -4,4 +4,4 @@ echo "install script"
 cd src
 make clean
 make lisp
-
+echo "local to user installed only"

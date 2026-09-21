@@ -8,12 +8,12 @@ CFLAGS = -Wall -g -pedantic -std=gnu2x -O2
 
 lisp: $(objects)
 	cc -o $@ $(objects) -lX11 -L/usr/X11/lib -lm
-	cp lisp ~/bin/
+	mv lisp ~/bin/
 
+.phoney: install
 install: $(objects)
-	cc -o $@ $(objects) -lX11 -L/usr/X11/lib -lm
-	cp lisp ~/bin/
-	sudo cp lisp /usr/local/bin/
+	make lisp
+	sudo cp ~/bin/lisp /usr/local/bin/
 
 # header dependencies, so editing a .h forces a rebuild of everything
 # that includes it -- make's implicit .c.o rule only looks at the .c
