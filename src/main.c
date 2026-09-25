@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.42"
+#define LISPVER "3.43"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -221,6 +221,12 @@ if (syslogyes) {
 /* look for series of load filenames */
 
 jmpvalue = setjmp(main_env);   /* first def point for user break*/
+if (jmpvalue != 0) {
+	/* as at the second def point: drop the bindings of the aborted */
+	/* evaluation and clear cells left gcflagged (e.g. pending let or */
+	/* lambda bindings) before the files are read again */
+	garbage_coll(TRUE);
+}
 
 if (++fileguard > 10)
 {
