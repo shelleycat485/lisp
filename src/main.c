@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.40"
+#define LISPVER "3.41"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -722,15 +722,22 @@ SLC *nextf, *tf, *temp;
 
 int lambda_bind (SLC *formalargs, SLC *actualargs)
 {
-SLC *nextf, *nexta, *tf, *nexta_raw;
+SLC *nextf, *nexta, *tf, *nexta_raw, *pending, *pendlast;
 int numbound;
 
 /* does the binding of the lambda arguments onto the binding list */
 /* returns number of arguments bound */
 /* binds each element with an evaluated actual arg */
 
+/* all the actual args are evaluated before any formal is bound, so an */
+/* actual arg that names a formal of this lambda sees the caller's value */
+/* e.g. (f 'x a) with (defun f (a b) ..) gives b the caller's a, not x. */
+/* The new bindings are collected on pending (kept gcflagged) and then */
+/* put on the top of the binding list together, in the same order as if */
+/* pushed one at a time, so the last formal is at the top. */
 
 numbound = 0;
+pending = pendlast = NULL;
 /* formalargs is a list pointer */
 formalargs = formalargs->r.rigptr;
 while (isnullcell(formalargs)==FALSE) {
@@ -742,6 +749,9 @@ while (isnullcell(formalargs)==FALSE) {
 	if (nextf->lstat != IDATOM) {
 		report_error ("lambda", "formal arguments must be atoms", NULL, FALSE);
 		trace = TRUE;
+		mark_not(tf);
+		mark_not(nextf);
+		mark_not(nexta);
 		break;
 	}
 	copycell (actualargs, nexta);
@@ -749,20 +759,20 @@ while (isnullcell(formalargs)==FALSE) {
 	nexta_raw = nexta; /* keep a handle on the pre-eval scratch cell */
 	mark_req(nexta = lx_eval(nexta)); /* eval the actual argument */
 	mark_not(nexta_raw); /* release it now that eval is done reading it */
-	/* put the new element at top of binding list */
-	tf->lefptr = binlptr;
-	binlptr = tf;
-	/* add the new def to the binding list */
+	/* put the new element at top of the pending list */
+	tf->lefptr = pending;
+	pending = tf;
+	if (pendlast == NULL) {
+		pendlast = tf;	/* first formal, will link to binlptr */
+	}
 	tf->r.rigptr = nextf;
 	if (isnullcell(nexta)==FALSE) {
 		nextf->lefptr = nexta;	/* only do pointing if not null */
 	} else {
 		nextf->lefptr = NULL;
+		mark_not(nexta);	/* not linked in, so not kept */
 	}
 	numbound++;
-	mark_not(tf);
-	mark_not(nextf);
-	mark_not(nexta);
 	/* move down to next formal and actual arg */
 	formalargs = formalargs->lefptr;
 	if (actualargs->lefptr != 0) {
@@ -774,6 +784,17 @@ while (isnullcell(formalargs)==FALSE) {
 		actualargs = getfree();
 	}
 } /* end loop */
+
+/* now bind them all, the binding list keeps them from here on */
+if (pending) {
+	pendlast->lefptr = binlptr;
+	binlptr = pending;
+	for (tf = pending; tf != pendlast->lefptr; tf = tf->lefptr) {
+		mark_not(tf->r.rigptr->lefptr);	/* the value, may be NULL */
+		mark_not(tf->r.rigptr);
+		mark_not(tf);
+	}
+}
 return numbound;
 } /* end function lambda_bind */
 
