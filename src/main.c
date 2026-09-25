@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.45"
+#define LISPVER "3.46"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -84,7 +84,6 @@ extern void syslog_form(SLC* form);
 
 void read_file (char * fname);
 void Prompt_and_Read(int fout);  
-SLC *internal_set(SLC *form, int mode, int bindingflag);
 
 int garb_announce = FALSE;
 int syslogyes = FALSE;
@@ -2143,16 +2142,9 @@ return res;
 
 SLC *lx_set(SLC *form, int mode)
 {
-  return internal_set(form, mode, 0);
-
-} /* end function internal_set */
-
-
-
-SLC *internal_set(SLC *form, int mode, int bindingflag)
-{
 SLC *a1ptr,*a2ptr,*newptr,*tptr,*retval;
 
+/* set (mode EVAL) and setq (mode NOEVAL) */
 /* lx_prin(stdout,form, SPACE, NOESC); this is for debug */
 copycell(form->lefptr, a1ptr = getfree());
 mark_req(a1ptr); /* in case gc triggered by a2ptr free cell begin got */
@@ -2175,24 +2167,14 @@ if (a1ptr == NULL || a1ptr->lstat != IDATOM) {
 	retval = report_error("set(q)","args must be non-numeric atoms",form, TRUE);
 	goto exit;
 } /* end error check */
-/* search returns a null if nothing found */
-newptr = NULL;
-if (!bindingflag) {
-  newptr= sear_oblist(a1ptr); /* only search if a set, if a binding always */
-                              /* want a new entry to be made.  A set function */
-                              /* in a binding will still want a search */
-}
+/* search returns a null if nothing found; a set within a binding */
+/* finds and changes the binding */
+newptr= sear_oblist(a1ptr);
 if (newptr == NULL) {
 	/* add the new name element to the oblist */
-        /* also called internally from let, which uses the binding list */
 	newptr = getfree();
-	if (bindingflag) {
-	    newptr->lefptr = binlptr;
-	    binlptr = newptr;
-	} else { 
-	    newptr->lefptr = oblptr;
-	    oblptr = newptr;
- 	}
+	newptr->lefptr = oblptr;
+	oblptr = newptr;
 	newptr->r.rigptr = a1ptr;
 } 
 tptr = newptr->r.rigptr; 
