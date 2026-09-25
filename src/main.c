@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.44"
+#define LISPVER "3.45"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -172,7 +172,7 @@ static FILE *inStream = NULL;
 int main(int argc, char *argv[])
 {
 int jmpvalue,i;
-int fileguard = 0;
+volatile int fileguard = 0; /* volatile: changed after setjmp, must survive longjmp */
 char *libname;
 /*int fd[2];*/
 int fd1[2];
