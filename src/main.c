@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.43"
+#define LISPVER "3.44"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -726,57 +726,94 @@ SLC *nextf, *tf, *temp;
 
 
 
+/* Parallel binding, shared by lambda_bind and lx_let. */
+/* All the values are evaluated before any variable is bound, so a value */
+/* that names one of the new variables sees the caller's value */
+/* e.g. (f 'x a) with (defun f (a b) ..) gives b the caller's a, not x, */
+/* and (let ((a 1) (b a)) ..) gives b the outer a. */
+/* bind_to_pending evaluates one value and collects the new binding on */
+/* pending (kept gcflagged); bind_pending then puts them all on the top */
+/* of the binding list together, in the same order as if pushed one at a */
+/* time, so the last variable is at the top. */
+
+static int bind_to_pending (SLC *var, SLC *valexpr, SLC **pending,
+				SLC **pendlast, char *fname)
+{
+SLC *nextf, *nexta, *tf, *nexta_raw;
+
+/* returns 1 if a binding was added to pending, 0 if var is not an atom */
+
+mark_req(nextf = getfree());
+mark_req(tf = getfree());
+mark_req(nexta = getfree());
+copycell (var, nextf);
+nextf->lefptr = 0; /* cut link to next var */
+if (nextf->lstat != IDATOM) {
+	report_error (fname, "formal arguments must be atoms", NULL, FALSE);
+	trace = TRUE;
+	mark_not(tf);
+	mark_not(nextf);
+	mark_not(nexta);
+	return 0;
+}
+copycell (valexpr, nexta); /* a NULL valexpr gives a null cell, so nil */
+nexta->lefptr = 0;
+nexta_raw = nexta; /* keep a handle on the pre-eval scratch cell */
+mark_req(nexta = lx_eval(nexta)); /* eval the value */
+mark_not(nexta_raw); /* release it now that eval is done reading it */
+/* put the new element at top of the pending list */
+tf->lefptr = *pending;
+*pending = tf;
+if (*pendlast == NULL) {
+	*pendlast = tf;	/* first var, will link to binlptr */
+}
+tf->r.rigptr = nextf;
+if (isnullcell(nexta)==FALSE) {
+	nextf->lefptr = nexta;	/* only do pointing if not null */
+} else {
+	nextf->lefptr = NULL;
+	mark_not(nexta);	/* not linked in, so not kept */
+}
+return 1;
+} /* end function bind_to_pending */
+
+
+
+static void bind_pending (SLC *pending, SLC *pendlast)
+{
+SLC *tf;
+
+/* now bind them all, the binding list keeps them from here on */
+if (pending) {
+	pendlast->lefptr = binlptr;
+	binlptr = pending;
+	for (tf = pending; tf != pendlast->lefptr; tf = tf->lefptr) {
+		mark_not(tf->r.rigptr->lefptr);	/* the value, may be NULL */
+		mark_not(tf->r.rigptr);
+		mark_not(tf);
+	}
+}
+} /* end function bind_pending */
+
+
+
 int lambda_bind (SLC *formalargs, SLC *actualargs)
 {
-SLC *nextf, *nexta, *tf, *nexta_raw, *pending, *pendlast;
+SLC *pending, *pendlast;
 int numbound;
 
 /* does the binding of the lambda arguments onto the binding list */
 /* returns number of arguments bound */
-/* binds each element with an evaluated actual arg */
-
-/* all the actual args are evaluated before any formal is bound, so an */
-/* actual arg that names a formal of this lambda sees the caller's value */
-/* e.g. (f 'x a) with (defun f (a b) ..) gives b the caller's a, not x. */
-/* The new bindings are collected on pending (kept gcflagged) and then */
-/* put on the top of the binding list together, in the same order as if */
-/* pushed one at a time, so the last formal is at the top. */
+/* binds each element with an evaluated actual arg, in parallel, */
+/* see bind_to_pending */
 
 numbound = 0;
 pending = pendlast = NULL;
 /* formalargs is a list pointer */
 formalargs = formalargs->r.rigptr;
 while (isnullcell(formalargs)==FALSE) {
-	mark_req(nextf = getfree());
-	mark_req(tf = getfree());
-	mark_req(nexta = getfree());
-	copycell (formalargs, nextf);
-	nextf->lefptr = 0; /* cut link to next arg */
-	if (nextf->lstat != IDATOM) {
-		report_error ("lambda", "formal arguments must be atoms", NULL, FALSE);
-		trace = TRUE;
-		mark_not(tf);
-		mark_not(nextf);
-		mark_not(nexta);
+	if (!bind_to_pending(formalargs, actualargs, &pending, &pendlast, "lambda")) {
 		break;
-	}
-	copycell (actualargs, nexta);
-	nexta->lefptr = 0;
-	nexta_raw = nexta; /* keep a handle on the pre-eval scratch cell */
-	mark_req(nexta = lx_eval(nexta)); /* eval the actual argument */
-	mark_not(nexta_raw); /* release it now that eval is done reading it */
-	/* put the new element at top of the pending list */
-	tf->lefptr = pending;
-	pending = tf;
-	if (pendlast == NULL) {
-		pendlast = tf;	/* first formal, will link to binlptr */
-	}
-	tf->r.rigptr = nextf;
-	if (isnullcell(nexta)==FALSE) {
-		nextf->lefptr = nexta;	/* only do pointing if not null */
-	} else {
-		nextf->lefptr = NULL;
-		mark_not(nexta);	/* not linked in, so not kept */
 	}
 	numbound++;
 	/* move down to next formal and actual arg */
@@ -791,16 +828,7 @@ while (isnullcell(formalargs)==FALSE) {
 	}
 } /* end loop */
 
-/* now bind them all, the binding list keeps them from here on */
-if (pending) {
-	pendlast->lefptr = binlptr;
-	binlptr = pending;
-	for (tf = pending; tf != pendlast->lefptr; tf = tf->lefptr) {
-		mark_not(tf->r.rigptr->lefptr);	/* the value, may be NULL */
-		mark_not(tf->r.rigptr);
-		mark_not(tf);
-	}
-}
+bind_pending(pending, pendlast);
 return numbound;
 } /* end function lambda_bind */
 
@@ -2048,68 +2076,41 @@ return res;
 
 
 /* sets a block of local lexical variables up */
-/* set ( (var1 val1) (var2 val2).. ) form1 form2   ) */
-/* locates the var list, assignes each to binding list like set */
+/* let ( (var1 val1) (var2 val2).. ) form1 form2   ) */
+/* locates the var list, binds each var to its evaluated val */
 /* locates the forms, evaluates each one */
 /* unbinds the binding list at the end */
-/* the binding is parallel: all the vals are evaluated before any var is */
-/* bound, so in ((a 1) (b a)) b gets the outer a, as with lambda args */
+/* the binding is parallel, using the same bind_to_pending/bind_pending */
+/* as lambda_bind: all the vals are evaluated before any var is bound, */
+/* so in ((a 1) (b a)) b gets the outer a, as with lambda args */
 SLC *lx_let(SLC *form)
 {
-  SLC *vlist, *flist, *a1ptr, *a2ptr, *res, *s1, *s2;
-  SLC *oldtop, *tf, *pending = NULL, *pendlast = NULL;
+  SLC *vlist, *flist, *clause, *var, *res;
+  SLC *pending = NULL, *pendlast = NULL;
   int nbound = 0;
   int formcount = 0; /* if there is a let without any forms its useless */
 
-  s1 = getfree(); /* set up the start of a setq form */
-  mark_req(s1);
-  s1->lstat=LSLST;
-  s2= getfree();
-  s2->r.idval=16;  /* the one for setq but not checked so does not matter */
-  s2->lstat=IDATOM;
-  s1->r.rigptr = s2;
-
   vlist = form->lefptr; /* process each (var val1) clause */
-  a1ptr = vlist->r.rigptr;
-  if (vlist == NULL || vlist->lstat != LSLST || a1ptr == NULL ) {
+  /* check vlist before reading from it, a bare (let) has none */
+  if (vlist == NULL || vlist->lstat != LSLST || vlist->r.rigptr == NULL ) {
 	printf ("Error: let: bad locals - needs ( (var val..) )\n");
 	longjmp (main_env,5);
   }
-  while(a1ptr) {
-    copycell(a1ptr, a2ptr = getfree());
-    s2->lefptr = a2ptr->r.rigptr;
-    a2ptr->lefptr = NULL;
-    /* lx_prin(stdout,s1, SPACE, NOESC);  for debug */
-    oldtop = binlptr;
-    internal_set(s1->r.rigptr, NOEVAL, 1);
-    if (binlptr != oldtop) {
-      /* move the new binding off the binding list onto pending, so */
-      /* the following vals are evaluated without it; kept gcflagged */
-      tf = binlptr;
-      binlptr = tf->lefptr;
-      tf->lefptr = pending;
-      pending = tf;
-      if (pendlast == NULL) {
-        pendlast = tf;	/* first var, will link to binlptr */
+  clause = vlist->r.rigptr;
+  while(clause) {
+    if (clause->lstat != LSLST || clause->r.rigptr == NULL) {
+      report_error ("let", "each local must be (var val)", clause, TRUE);
+      trace = TRUE;
+    } else {
+      var = clause->r.rigptr;
+      /* var->lefptr is the val, NULL for a clause of just (var) */
+      if (bind_to_pending(var, var->lefptr, &pending, &pendlast, "let")) {
+        nbound += 1;	/* only count a binding that was made */
       }
-      mark_req(tf);
-      mark_req(tf->r.rigptr);
-      mark_req(tf->r.rigptr->lefptr);	/* the value, may be NULL */
-      nbound += 1;	/* only count a binding that was made */
     }
-    a1ptr = a1ptr->lefptr;
+    clause = clause->lefptr;
   }
-  mark_not(s1);
-  /* now bind them all, same order as binding one at a time */
-  if (pending) {
-    pendlast->lefptr = binlptr;
-    binlptr = pending;
-    for (tf = pending; tf != pendlast->lefptr; tf = tf->lefptr) {
-      mark_not(tf->r.rigptr->lefptr);
-      mark_not(tf->r.rigptr);
-      mark_not(tf);
-    }
-  }
+  bind_pending(pending, pendlast);
   /* evaluate form1 form2... to the end of the let */
   flist = vlist->lefptr;
   if (flist == NULL ) {
