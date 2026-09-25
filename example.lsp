@@ -2,6 +2,7 @@
 ;
 ; Demonstrates an argument binding bug in the interpreter, fixed in v3.41
 ; (up to v3.40 cases 1, 2 and 5 print WRONG; from v3.41 all print ok).
+; Case 6 shows the same fault in let, fixed in v3.42.
 ;
 ; Up to v3.40, when a lambda was applied, each formal parameter was bound as soon as its
 ; actual argument has been evaluated, before the next argument is
@@ -68,5 +69,12 @@
 (defun mk (v l r) (list v l r))
 (defun wrap (v) (mk 'top (mk v () ()) ()))
 (show "5. nested node building, (wrap 'leaf)" '(top (leaf () ()) ()) (wrap 'leaf))
+
+; 6. let had the same fault up to v3.41: each (var val) was bound before
+;    the next val was evaluated, so let acted like let*. From v3.42 all
+;    the vals are evaluated first, so b gets the outer a.
+(setq a (quote outer))
+(show "6. (let ((a (quote inner)) (b a)) (list a b))" (quote (inner outer))
+      (let ((a (quote inner)) (b a)) (list a b)))
 
 (exit)

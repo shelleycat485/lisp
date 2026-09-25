@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.41"
+#define LISPVER "3.42"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -2046,9 +2046,12 @@ return res;
 /* locates the var list, assignes each to binding list like set */
 /* locates the forms, evaluates each one */
 /* unbinds the binding list at the end */
+/* the binding is parallel: all the vals are evaluated before any var is */
+/* bound, so in ((a 1) (b a)) b gets the outer a, as with lambda args */
 SLC *lx_let(SLC *form)
 {
   SLC *vlist, *flist, *a1ptr, *a2ptr, *res, *s1, *s2;
+  SLC *oldtop, *tf, *pending = NULL, *pendlast = NULL;
   int nbound = 0;
   int formcount = 0; /* if there is a let without any forms its useless */
 
@@ -2071,11 +2074,36 @@ SLC *lx_let(SLC *form)
     s2->lefptr = a2ptr->r.rigptr;
     a2ptr->lefptr = NULL;
     /* lx_prin(stdout,s1, SPACE, NOESC);  for debug */
-    internal_set(s1->r.rigptr, NOEVAL, 1);  
+    oldtop = binlptr;
+    internal_set(s1->r.rigptr, NOEVAL, 1);
+    if (binlptr != oldtop) {
+      /* move the new binding off the binding list onto pending, so */
+      /* the following vals are evaluated without it; kept gcflagged */
+      tf = binlptr;
+      binlptr = tf->lefptr;
+      tf->lefptr = pending;
+      pending = tf;
+      if (pendlast == NULL) {
+        pendlast = tf;	/* first var, will link to binlptr */
+      }
+      mark_req(tf);
+      mark_req(tf->r.rigptr);
+      mark_req(tf->r.rigptr->lefptr);	/* the value, may be NULL */
+      nbound += 1;	/* only count a binding that was made */
+    }
     a1ptr = a1ptr->lefptr;
-    nbound += 1;
   }
   mark_not(s1);
+  /* now bind them all, same order as binding one at a time */
+  if (pending) {
+    pendlast->lefptr = binlptr;
+    binlptr = pending;
+    for (tf = pending; tf != pendlast->lefptr; tf = tf->lefptr) {
+      mark_not(tf->r.rigptr->lefptr);
+      mark_not(tf->r.rigptr);
+      mark_not(tf);
+    }
+  }
   /* evaluate form1 form2... to the end of the let */
   flist = vlist->lefptr;
   if (flist == NULL ) {
