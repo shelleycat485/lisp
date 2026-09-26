@@ -40,7 +40,7 @@ typedef struct listcell {
 #if SMALLSTORE
 /* hard ceiling on atom ids; the atom store starts small and grows
    toward this via grow_atomstore() (see src/liststor.c) */
-#define MAXATOMS 1000
+#define MAXATOMS 256000
 /* main list number of cells */
 #define MAXLELE 6000
 #else
