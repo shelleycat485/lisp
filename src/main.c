@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.47"
+#define LISPVER "3.48"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -95,11 +95,23 @@ jmp_buf main_env;
    process's check_keyboard() polls, clears, and acts on it. */
 static volatile sig_atomic_t *ctrlc_flag_ptr = NULL;
 
+/* for reporting a failure while loading files: current_file is the file */
+/* being read (innermost, for a load within a file), last_good_file the */
+/* last file that was read all the way through */
+#define SZ_LGF 80
+static char current_file[SZ_LGF] = "";
+static char last_good_file[SZ_LGF] = "";
+
 void read_file (char *fname)
 {
 FILE *infilestream;
 SLC *hptr; /* head of list to be evaluated */
+char outer_file[SZ_LGF];
 
+	/* an abort longjmps out of here, leaving current_file as the file */
+	/* that failed; a normal return restores the outer file's name */
+	snprintf(outer_file, SZ_LGF, "%s", current_file);
+	snprintf(current_file, SZ_LGF, "%s", fname);
 	if((infilestream = fopen(fname, "r")) == NULL){
 		sprintf(outbuf, "Warning: Cannot find or open %s\n", fname);
 		condpr (stdout);
@@ -114,7 +126,9 @@ SLC *hptr; /* head of list to be evaluated */
 			}
 		} /* end while loop */
 		fclose(infilestream);
+		snprintf(last_good_file, SZ_LGF, "%s", fname);
 	} /* end read file */
+	snprintf(current_file, SZ_LGF, "%s", outer_file);
 } /* end function read_file */
 
 
@@ -176,10 +190,7 @@ char *libname;
 /*int fd[2];*/
 int fd1[2];
 int pipe1 = pipe(fd1);
-#define SZ_LGF 80
-char last_good_file[SZ_LGF];
 SLC *hptr; /* head of list to be evaluated */
-last_good_file[0] = 0;
 
 printf("LISP. Copyright R Haxby 1991-2026. Version ");
 printf(LISPVER);
@@ -229,15 +240,19 @@ if (jmpvalue != 0) {
 
 if (++fileguard > 10)
 {
-	printf("failed while reading file %s, bailing\n", last_good_file);
+	if (last_good_file[0]) {
+		printf("failed while reading file %s (last file read successfully: %s), bailing\n",
+			current_file, last_good_file);
+	} else {
+		printf("failed while reading file %s (no file read successfully), bailing\n",
+			current_file);
+	}
 	exit(7); // have read a lot of files in a loop, bailing
 }
 
 for(i=1; i < argc ; ++i){
-	strncpy(last_good_file, argv[i], SZ_LGF-1);
-	last_good_file[SZ_LGF-1] = '\0';   /* strncpy doesn't guarantee this */
-	printf("...reading file %s\n", last_good_file);
-	read_file (last_good_file);
+	printf("...reading file %s\n", argv[i]);
+	read_file (argv[i]);
 } /* end i loop */
 
 ctrlc_flag_ptr = mmap(NULL, sizeof(*ctrlc_flag_ptr), PROT_READ | PROT_WRITE,
