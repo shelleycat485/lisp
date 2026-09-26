@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.48"
+#define LISPVER "3.49"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -462,9 +462,6 @@ int redefs;
 		report_error("eval","first element of a list must be a function", form, TRUE);
 		goto endeval;
 	}
-	formname = form->r.idval;
-
-
 
 	formname = form->r.idval;
 	/* test for primitive names here */
