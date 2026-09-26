@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.46"
+#define LISPVER "3.47"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
