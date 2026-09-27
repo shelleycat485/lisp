@@ -1,4 +1,6 @@
 
+; prettyprinter for lisp functions. Indented output to screen.
+
 (defun xtab (n) 
   (loop (until (minusp (setq n (- n 1)))) (prin space) )
 )
@@ -9,7 +11,7 @@
 )
 
 
-(defun sprint (arg)
+(defun sprint (arg) ; arg is a function name
   (sprint1 arg 0)
 )
 
