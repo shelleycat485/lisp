@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.50"
+#define LISPVER "3.51"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -54,6 +54,7 @@ extern SLC *lx_while                (SLC *, int );
 extern SLC *lx_null                 (SLC *);
 extern SLC *lx_set                  (SLC *, int );
 extern SLC *lx_let                  (SLC *);
+extern SLC *lx_letstar              (SLC *);
 extern SLC *lx_compex		    (SLC *); /* for testing complilations */
 extern SLC *lx_obl                  (SLC *);
 extern SLC *lx_helpfunc             ();
@@ -678,9 +679,12 @@ int redefs;
 			res = lx_let (form);
 			break;
 		case 70:
-			res = lx_compex (form);
+			res = lx_letstar (form);
 			break;
 		case 71:
+			res = lx_compex (form);
+			break;
+		case 72:
 			res = lx_defined(form->lefptr);
 			break;
 		default:
@@ -2091,10 +2095,12 @@ return res;
 /* locates the var list, binds each var to its evaluated val */
 /* locates the forms, evaluates each one */
 /* unbinds the binding list at the end */
-/* the binding is parallel, using the same bind_to_pending/bind_pending */
-/* as lambda_bind: all the vals are evaluated before any var is bound, */
-/* so in ((a 1) (b a)) b gets the outer a, as with lambda args */
-SLC *lx_let(SLC *form)
+/* shared by let and let*, both using bind_to_pending/bind_pending as */
+/* lambda_bind does. parallel (let): all the vals are evaluated before */
+/* any var is bound, so in ((a 1) (b a)) b gets the outer a, as with */
+/* lambda args. series (let*): each var is bound as soon as its val is */
+/* evaluated, so in ((a 1) (b a)) b gets 1 */
+static SLC *let_common(SLC *form, int parallel, char *fname)
 {
   SLC *vlist, *flist, *clause, *var, *res;
   SLC *pending = NULL, *pendlast = NULL;
@@ -2104,19 +2110,24 @@ SLC *lx_let(SLC *form)
   vlist = form->lefptr; /* process each (var val1) clause */
   /* check vlist before reading from it, a bare (let) has none */
   if (vlist == NULL || vlist->lstat != LSLST || vlist->r.rigptr == NULL ) {
-	printf ("Error: let: bad locals - needs ( (var val..) )\n");
+	printf ("Error: %s: bad locals - needs ( (var val..) )\n", fname);
 	longjmp (main_env,5);
   }
   clause = vlist->r.rigptr;
   while(clause) {
     if (clause->lstat != LSLST || clause->r.rigptr == NULL) {
-      report_error ("let", "each local must be (var val)", clause, TRUE);
+      report_error (fname, "each local must be (var val)", clause, TRUE);
       trace = TRUE;
     } else {
       var = clause->r.rigptr;
       /* var->lefptr is the val, NULL for a clause of just (var) */
-      if (bind_to_pending(var, var->lefptr, &pending, &pendlast, "let")) {
+      if (bind_to_pending(var, var->lefptr, &pending, &pendlast, fname)) {
         nbound += 1;	/* only count a binding that was made */
+        if (!parallel) {
+          /* let*: bind now, so the following vals see this var */
+          bind_pending(pending, pendlast);
+          pending = pendlast = NULL;
+        }
       }
     }
     clause = clause->lefptr;
@@ -2125,7 +2136,7 @@ SLC *lx_let(SLC *form)
   /* evaluate form1 form2... to the end of the let */
   flist = vlist->lefptr;
   if (flist == NULL ) {
-	printf ("Error: let: wants ((var1 val2))...form1... Brackets wrong?\n");
+	printf ("Error: %s: wants ((var1 val2))...form1... Brackets wrong?\n", fname);
 	longjmp (main_env,5);
   }
   res = NULL;
@@ -2139,16 +2150,30 @@ SLC *lx_let(SLC *form)
 	if (binlptr) {
 		binlptr = binlptr->lefptr;
 	} else {
-		printf ("Error:  let: unbind from empty binding list\n");
+		printf ("Error:  %s: unbind from empty binding list\n", fname);
 		longjmp (main_env,5);
 	}
   }
   if (formcount == 0) {
-	printf ("Error:  let: no forms to evaluate (perhaps bracket error)\n");
+	printf ("Error:  %s: no forms to evaluate (perhaps bracket error)\n", fname);
 	longjmp (main_env,5);
   }
 return res;
+} /* end function let_common */
+
+
+/* let: parallel binding */
+SLC *lx_let(SLC *form)
+{
+  return let_common(form, TRUE, "let");
 } /* end function lx_let */
+
+
+/* let*: series binding */
+SLC *lx_letstar(SLC *form)
+{
+  return let_common(form, FALSE, "let*");
+} /* end function lx_letstar */
 
 
 
