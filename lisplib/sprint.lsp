@@ -5,7 +5,7 @@
 
 ; set up info as to which primitives to treat specially
 (mapc '(lambda (arg) (put arg 'sprint t))
-  '( loop while until and or let)
+  '( loop while until and or let let*)
 )
 
 
