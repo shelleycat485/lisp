@@ -33,53 +33,9 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.52"
+#define LISPVER "3.53"
 
-extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
-extern SLC *lx_car                  (SLC *);
-extern SLC *lx_cdr                  (SLC *);
-extern SLC *lx_cons                 (SLC *);
-extern SLC *lx_reverse              (SLC *);
-extern SLC *lx_append               (SLC *);
-extern SLC *lx_length               (SLC *);
-extern SLC *lx_minusp               (SLC *);
-extern SLC *lx_true                 (void);
-extern SLC *lx_listp                (SLC *);
-extern SLC *lx_atom                 (SLC *);
-extern SLC *lx_numberp              (SLC *);
-extern SLC *lx_list                 (SLC *);
-extern SLC *lx_loop                 (SLC *);
-extern SLC *lx_while                (SLC *, int );
-extern SLC *lx_null                 (SLC *);
-extern SLC *lx_set                  (SLC *, int );
-extern SLC *lx_let                  (SLC *);
-extern SLC *lx_letstar              (SLC *);
-extern SLC *lx_compex		    (SLC *); /* for testing complilations */
-extern SLC *lx_obl                  (SLC *);
-extern SLC *lx_helpfunc             ();
-extern SLC *lx_plus                 (SLC *, int );
-extern SLC *lx_cond                 (SLC *);
-extern SLC *lx_and                  (SLC *);
-extern SLC *lx_or                   (SLC *);
-extern SLC *lx_load                 (SLC *);
-extern SLC *lx_eq                   (SLC *);
-extern SLC *lx_eof                  (SLC *);
-extern SLC *lx_readch               (SLC *);
-extern SLC *lx_explode              (SLC *);
-extern SLC *lx_implode              (SLC *);
-extern SLC *lx_write                (SLC *, int , int );
-extern SLC *lx_read                 (SLC *);
-extern SLC *lx_open                 (SLC *);
-extern SLC *lx_close                (SLC *);
-extern SLC *lx_put                  (SLC *);
-extern SLC *lx_remprop              (SLC *);
-extern SLC *lx_get                  (SLC *);
-extern SLC *lx_system               (SLC *);
-extern SLC *lx_rplaca               (SLC *);
-extern SLC *lx_rplacd               (SLC *);
-extern SLC *lx_ordinal              (SLC *);
-extern SLC *lx_defined              (SLC *);
 
 extern void syslog_form(SLC* form);
 
@@ -348,10 +304,6 @@ while(TRUE)
 
 
 
-int bind_uneval (SLC *formalargs,
-		SLC *actualargs    );
-int lambda_bind (SLC *formalargs,
-		SLC *actualargs    );
 SLC *do_lambda (SLC *inptr, SLC *form);
 
 int trace; /* for switching on evaluation tracing */
