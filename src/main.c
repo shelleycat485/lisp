@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.51"
+#define LISPVER "3.52"
 
 extern SLC *lx_eval                 (SLC *);
 SLC *lx_eval_internal               (SLC *, bool);
@@ -386,9 +386,20 @@ int redefs;
 	syslog_form(inptr);
 
 	if (inptr->lstat == NUMATOM) {
-		res = inptr;
+		if (inptr->lefptr != NULL && inptr->isfptr == 0) {
+			/* a literal number that is not the last argument is */
+			/* still linked to the next one, e.g. the 1 in (or 1 2): */
+			/* return a copy without the link, else the rest of the */
+			/* arguments go with the value, (or 1 2) printing as 1 2. */
+			/* File handles are not copied, close marks the cell itself */
+			res = getfree();
+			copycell(inptr, res);
+			res->lefptr = NULL;
+		} else {
+			res = inptr;
+		}
 		goto endeval;
-	} 
+	}
 
 	if (inptr->lstat == IDATOM) {
 		res1 = sear_oblist (inptr);
@@ -1243,6 +1254,11 @@ if (a1ptr == NULL || a1ptr->lstat != NUMATOM) {
 	return report_error ("write", "arg missing or not file handle", form, TRUE);
 }
 outfp = a1ptr->r.rigfp;
+if (a1ptr->isfptr == 1 && outfp == NULL) {
+	sprintf(outbuf, "Warning: write: file is closed\n");
+	condpr(stdout);
+	return NULL;
+}
 lx_prin(outfp,a2ptr = lx_eval(a2ptr), spflag, escflag);
 return a2ptr;
 
@@ -1432,8 +1448,13 @@ FILE *testfp(SLC *inptr);
 FILE *testfp(SLC *inptr)
 {
 /* if the argument is present it is taken as a file handle */
+/* returns NULL, with a warning, for a handle that has been closed */
 
 if (!isnullcell(inptr) && inptr->lstat == NUMATOM && inptr->isfptr == 1) {
+	if (inptr->r.rigfp == NULL) {
+		sprintf(outbuf, "Warning: file is closed\n");
+		condpr(stdout);
+	}
 	return (inptr->r.rigfp);
 } else {
 	return (inStream);
@@ -1447,8 +1468,12 @@ SLC* lx_read(SLC *inptr)
 /* if the argument is present it is taken as a file handle */
 /* if EOF found, then the expression read is null */
 SLC *retval = NULL;
+FILE *fp = testfp(inptr);
 
-lex_sexp(testfp(inptr), &retval);
+if (fp == NULL) {
+	return NULL; /* closed file */
+}
+lex_sexp(fp, &retval);
 return retval;
 } /* end function lx_read */
 
@@ -1464,8 +1489,12 @@ SLC* lx_readch(SLC *inptr)
 SLC *res;
 char c[5];
 int tempc;
+FILE *fp = testfp(inptr);
 
-tempc = fgetc(testfp(inptr));
+if (fp == NULL) {
+	return NULL; /* closed file */
+}
+tempc = fgetc(fp);
 if (tempc == EOF) {
 	return NULL;
 }
@@ -1484,8 +1513,10 @@ SLC *lx_eof (SLC *inptr)
 {
 /* returns true if file is at end */
 /* if the argument is present it is taken as a file handle */
+/* a closed file counts as at the end */
+FILE *fp = testfp(inptr);
 
-if (feof(testfp(inptr))) {
+if (fp == NULL || feof(fp)) {
 	return lx_true();
 } else {
 	return NULL;
@@ -1542,10 +1573,19 @@ FILE *infp;
 		return report_error ("close", "must be given a file handle", inptr, TRUE);
 	}
 	infp = inptr->r.rigfp;
+	if (infp == NULL) {
+		/* closed already; closing again would free the FILE twice */
+		sprintf( outbuf, "Warning: close: file is already closed\n");
+		condpr (stdout);
+		return NULL;
+	}
 	if (fclose(infp) != 0) {
 		sprintf( outbuf, "Error: failed to close file\n");
 		condpr (stdout);
 	}
+	/* mark the handle closed: still a file handle, but with no FILE, */
+	/* so later close/read/write calls can tell and do not use freed memory */
+	inptr->r.rigfp = NULL;
 	return NULL;
 } /* end function lx_close */
 
