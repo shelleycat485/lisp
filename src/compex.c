@@ -1038,38 +1038,19 @@ return true;
 
 
 
-SLC *lx_compex(SLC *form)
-{
-/* compiles the form given to compex to machine code, runs that and */
-/* returns its result. If LISPCSPRINT is set, it first evaluates the */
-/* form with the interpreter too and prints both results and the */
-/* compile trace, for comparison; if not, only the compiled code runs */
-static byte *memptr = NULL;        /* executable area, allocated once */
-static bool goodtable = false;     /* true once ptable has been filled */
-static bool running = false;       /* compiled code is running */
+/* ---- the primitive table ---- */
+/* id, then: name, function, evaluate arg first, number of extra params, */
+/* param values, special handling; as the switch in lx_eval_internal. */
+/* Unlisted ids stay zero, so they fall back to lx_eval(form). Filled on */
+/* first use, by lx_compex or compex_lambda_call */
 static primentry ptable[80];       /* indexed by primitive id */
-SLC *x, *retval;
+static bool goodtable = false;     /* true once ptable has been filled */
 
-if (running) {
-	/* compex called from inside compiled code: compiling now would */
-	/* overwrite the code that is running, so just interpret */
-	return lx_eval(form->lefptr);
+static void fill_table(void)
+{
+if (goodtable) {
+	return;
 }
-
-if (memptr == NULL) {
-	byte *m = mmap(NULL, CODEMEM_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
-			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	if (m == MAP_FAILED) {
-		return report_error("compex", "cannot allocate executable memory", NULL, FALSE);
-	}
-	memptr = m;
-}
-
-if (!goodtable) {
-	/* id, then: name, function, evaluate arg first, number of extra */
-	/* params, param values, special handling; as the switch in */
-	/* lx_eval_internal. Unlisted ids stay zero, so they fall back */
-	/* to lx_eval(form) */
 	ptable[1]  = (primentry){"quote",   NULL,                 false, 0, 0, 0, SP_QUOTE};
 	ptable[2]  = (primentry){"true",    (anyfn)lx_true,       false, 0, 0, 0, SP_NONE};
 	ptable[3]  = (primentry){"eval",    (anyfn)lx_eval,       true,  0, 0, 0, SP_EVAL};
@@ -1142,11 +1123,185 @@ if (!goodtable) {
 	ptable[70] = (primentry){"letstar", (anyfn)lx_letstar,    false, 0, 0, 0, SP_NONE};
 	ptable[71] = (primentry){"compex",  NULL,                 false, 0, 0, 0, SP_FALLBACK}; /* never compile compex itself */
 	ptable[72] = (primentry){"defined", (anyfn)lx_defined,    false, 0, 0, 0, SP_UNEVALARG};
-	goodtable = true;
+goodtable = true;
+} /* end function fill_table */
+
+
+/* ---- compex modes ---- */
+/* (compex 0) interpreter only (the default), (compex 1) calls of */
+/* defun'd functions run their compiled bodies (compiled on first use), */
+/* (compex 2) both run and a warning is printed if the results differ. */
+/* The interpreter calls compex_lambda_call (from lx_eval_internal) for */
+/* a lambda call whenever compex_mode is not 0 */
+int compex_mode = 0;
+static bool comparing = false; /* mode 2 is running a function both ways */
+
+#if CODE_SUPPORTED
+/* structural equality of two values, as equal in init.lsp */
+static bool cx_equal(SLC *a, SLC *b)
+{
+bool na = isnullcell(a), nb = isnullcell(b);
+SLC *ea, *eb;
+
+if (na || nb) {
+	return na && nb;
+}
+if (a->lstat != b->lstat) {
+	return false;
+}
+if (a->lstat == LSLST) {
+	for (ea = a->r.rigptr, eb = b->r.rigptr; ea && eb; ea = ea->lefptr, eb = eb->lefptr) {
+		if (!cx_equal(ea, eb)) {
+			return false;
+		}
+	}
+	return ea == NULL && eb == NULL;
+}
+if (a->lstat == NUMATOM) {
+	if (a->isfptr || b->isfptr) {
+		return a->isfptr == b->isfptr && a->r.rigfp == b->r.rigfp;
+	}
+	return a->r.rigval == b->r.rigval;
+}
+return a->r.idval == b->r.idval; /* IDATOM */
+} /* end function cx_equal */
+
+/* prints just this value, not the rest of a list it is in */
+static void print_value(SLC *v)
+{
+SLC one;
+
+if (v == NULL) {
+	lx_prin(stdout, NULL, SPACE, NOESC);
+	return;
+}
+one = *v;
+one.lefptr = NULL;
+lx_prin(stdout, &one, SPACE, NOESC);
+} /* end function print_value */
+#endif
+
+/* called by lx_eval_internal (main.c) instead of do_lambda when */
+/* compex_mode is not 0: inptr is the call, form the (lambda ...) found */
+SLC *compex_lambda_call(SLC *inptr, SLC *form)
+{
+#if CODE_SUPPORTED
+SLC *head = inptr->r.rigptr;
+SLC *lam, *ri, *rc;
+cfunc *cf;
+int id;
+
+/* form is lx_eval_internal's copy of the definition cell, so compare */
+/* what they point to; the table keeps the real definition, lam */
+if (comparing || head == NULL || head->lstat != IDATOM
+    || (lam = lambda_of(head)) == NULL || lam->r.rigptr != form->r.rigptr) {
+	/* comparing already, or an anonymous ((lambda ...) args) or an */
+	/* alias: as the interpreter */
+	return do_lambda(inptr, form);
+}
+id = head->r.idval;
+fill_table();
+cf = cfunc_for(id, lam);
+if (cf == NULL) {
+	return do_lambda(inptr, form);
+}
+if (cf->code == NULL) {
+	cx_print = (getenv("LISPCSPRINT") != NULL);
+	if (!compile_pending(ptable)) {
+		return do_lambda(inptr, form); /* no room: interpret */
+	}
+}
+if (compex_mode == 1) {
+	return cx_call(inptr, cf);
+}
+/* mode 2: both, nested calls meanwhile only interpreted (else each */
+/* level would run both again, exponentially) */
+comparing = true;
+ri = do_lambda(inptr, form);
+mark_req(ri);
+rc = cx_call(inptr, cf);
+mark_not(ri);
+comparing = false;
+if (!cx_equal(ri, rc)) {
+	sprintf(outbuf, "compex: %s: interpreted ", getident(id)); condpr(stdout);
+	print_value(ri);
+	sprintf(outbuf, ", compiled "); condpr(stdout);
+	print_value(rc);
+	sprintf(outbuf, "\n"); condpr(stdout);
+}
+return ri;
+#else
+return do_lambda(inptr, form);
+#endif
+} /* end function compex_lambda_call */
+
+/* (bytes used, size) of the store for compiled function bodies */
+static SLC *compex_status(void)
+{
+SLC *res, *n1, *n2;
+float used = 0, size = 0;
+
+#if CODE_SUPPORTED
+used = (float)arena_used;
+size = (float)ARENA_SIZE;
+#endif
+mark_req(res = getfree());
+n1 = getfree();
+res->r.rigptr = n1; /* reachable before the next getfree */
+n1->lstat = NUMATOM;
+n1->r.rigval = used;
+n2 = getfree();
+n1->lefptr = n2;
+n2->lstat = NUMATOM;
+n2->r.rigval = size;
+mark_not(res);
+return res;
+} /* end function compex_status */
+
+
+
+SLC *lx_compex(SLC *form)
+{
+/* (compex N), N 0, 1 or 2: sets the mode (see compex_lambda_call); */
+/* (compex): leaves it. Both return (bytes-used store-size). */
+/* (compex form), any other argument: compiles the form to machine */
+/* code, runs that and returns its result. If LISPCSPRINT is set, it */
+/* first evaluates the form with the interpreter too and prints both */
+/* results and the compile trace; if not, only the compiled code runs */
+static byte *memptr = NULL;        /* executable area, allocated once */
+static bool running = false;       /* compiled code is running */
+SLC *x, *retval;
+
+x = form->lefptr;
+if (x == NULL) {
+	return compex_status();
+}
+if (x->lstat == NUMATOM && x->isfptr == 0) {
+	if (x->r.rigval == 0 || x->r.rigval == 1 || x->r.rigval == 2) {
+		compex_mode = (int)x->r.rigval;
+		return compex_status();
+	}
+	return report_error("compex", "mode must be 0, 1 or 2", x, TRUE);
 }
 
+if (running) {
+	/* compex called from inside compiled code: compiling now would */
+	/* overwrite the code that is running, so just interpret */
+	return lx_eval(x);
+}
+
+if (memptr == NULL) {
+	byte *m = mmap(NULL, CODEMEM_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
+			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (m == MAP_FAILED) {
+		return report_error("compex", "cannot allocate executable memory", NULL, FALSE);
+	}
+	memptr = m;
+}
+fill_table();
+
 cx_print = (getenv("LISPCSPRINT") != NULL);
-x = form->lefptr; /* the form to compile */
+
 if (cx_print) {
 	retval = lx_eval(x); /* the interpreter's result, to compare */
 	sprintf(outbuf, "interpreter: "); condpr(stdout);

@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.54"
+#define LISPVER "3.55"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -304,7 +304,6 @@ while(TRUE)
 
 
 
-SLC *do_lambda (SLC *inptr, SLC *form);
 
 int trace; /* for switching on evaluation tracing */
 int formname; /* for debug use, when getfree is called */
@@ -416,7 +415,8 @@ int redefs;
 	(form->r.rigptr)->r.idval == LAMID ){
 		/* found lambda def */
 		formname = LAMID; /* for debug tracing only */
-		res = do_lambda (inptr, form);
+		/* compex mode 1 or 2 runs the compiled function, see compex.c */
+		res = (compex_mode != 0) ? compex_lambda_call(inptr, form) : do_lambda (inptr, form);
 		goto endeval;
 	}
 

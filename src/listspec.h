@@ -145,6 +145,10 @@ extern SLC *lx_defined              (SLC *);
 /* lambda argument binding, main.c */
 extern int bind_uneval              (SLC *formalargs, SLC *actualargs);
 extern int lambda_bind              (SLC *formalargs, SLC *actualargs);
+extern SLC *do_lambda               (SLC *inptr, SLC *form);
+/* compex modes, compex.c: 0 interpret, 1 compiled, 2 both */
+extern int compex_mode;
+extern SLC *compex_lambda_call      (SLC *inptr, SLC *form);
 SLC *report_error (char *function, char *message, SLC *listarg, int showarg);
 extern char outbuf[];
 void condpr(FILE *fptr);
