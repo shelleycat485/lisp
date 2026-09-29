@@ -23,7 +23,6 @@
 #include  <setjmp.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <syslog.h>
 #include <math.h>
 #include "listspec.h"
 #include "turtinf.h"
@@ -33,17 +32,14 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.56"
+#define LISPVER "3.57"
 
 SLC *lx_eval_internal               (SLC *, bool);
-
-extern void syslog_form(SLC* form);
 
 void read_file (char * fname);
 void Prompt_and_Read(int fout);  
 
 int garb_announce = FALSE;
-int syslogyes = FALSE;
 jmp_buf main_env;
 
 /* shared between this process and the forked Prompt_and_Read child via
@@ -163,26 +159,12 @@ initmainlist();
 linenoiseHistoryLoad("history.txt"); /* Load the history at startup */
 linenoiseHistorySetMaxLen(50);
 
-setlogmask (LOG_UPTO (LOG_NOTICE));
-openlog ("lisp", LOG_PID | LOG_NDELAY, LOG_LOCAL1);
 /* look for environment lisp library, and load it if found */
-
 libname = getenv("LISPLIB");
 if (libname != NULL) {
 	printf ("...reading file %s\n", libname);
 	read_file (libname);
 }
-
-syslogyes = FALSE;
-libname = getenv("LISPSYSLOG");
-if (libname != NULL) {
-	syslogyes = TRUE;
-	printf ("syslogyes is %d\n", syslogyes);
-}
-if (syslogyes) {
-	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE), "lisp started %s", LISPVER);
-}
-
 
 
 /* look for series of load filenames */
@@ -333,8 +315,6 @@ int redefs;
 	formname = EVALID;
 	res = form = NULL;
 	mark_req (inptr);
-
-	syslog_form(inptr);
 
 	if (inptr->lstat == NUMATOM) {
 		if (inptr->lefptr != NULL && inptr->isfptr == 0) {
@@ -2313,25 +2293,3 @@ if (isnullcell(res) == test) {
 return res;
 } /* end function lx_while */
 
-
-void syslog_form(SLC* pform)
-{
-	int llen;
-	char* lstatvals[3] = {"List","Number","Idend"};
-	SLC* tp;
-
-	if (!syslogyes) {
-		return;
-	}
-	llen = 0;
-	tp = pform;
-	while (tp->lefptr) {
-		llen++;
-		tp = tp->lefptr;
-	}
-	
-	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-	"lisp form llen=%d lstat=%s idnum=%f",
-       	llen, lstatvals[pform->lstat], pform->r.rigval);
-
-}

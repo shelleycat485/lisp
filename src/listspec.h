@@ -91,7 +91,7 @@ extern int lex_sexp(FILE * infile, SLC **retval);
 
 
 extern jmp_buf  main_env;
-extern int  trace,looplevel, garb_announce, syslogyes;
+extern int  trace,looplevel, garb_announce;
 
 /* any functions starting lx_ are lisp primitives, accessible directly */
 

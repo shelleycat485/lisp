@@ -23,7 +23,6 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <malloc.h>
-#include <syslog.h>
 #include <setjmp.h>
 #include "listspec.h"
 
@@ -190,10 +189,6 @@ if (reclaimed == 0) {
 	puts("\nWarning: cannot reclaim any cells, evaluation stopped");
 	longjmp( main_env , 2);
 }
-if (syslogyes) {
-syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-	"Cell gc: %d of %d cells %d reclaimed", gcnum, targele, reclaimed);
-}
 if (garb_announce) {
 	sprintf (outbuf, "Garbage collection %d, of %d cells, %d reclaimed\n",gcnum, targele,reclaimed);
 	condpr (stdout);
@@ -227,10 +222,6 @@ SLC *wkptr, *oblidptr;
 
 if ((isnullcell(inatom)==FALSE) && (inatom->lstat == IDATOM)) {
 	inid = inatom->r.idval;
-	if (syslogyes) {
-		syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-			"start_search %d", inid);
-	}	
 	pass = 1;
 #ifdef DEBUG
 	guardleft = MAXLELE - 20;
@@ -245,10 +236,6 @@ if ((isnullcell(inatom)==FALSE) && (inatom->lstat == IDATOM)) {
 			oblidptr = wkptr->r.rigptr;
 			if (inid == oblidptr->r.idval) {
 				/* found the id match */
-				if (syslogyes) {
-					syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
-				    	"end_search %s", getident(inid));
-				}
 				return wkptr;
 			}
 			wkptr = wkptr->lefptr;
