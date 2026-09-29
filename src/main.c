@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.55"
+#define LISPVER "3.56"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -429,6 +429,11 @@ int redefs;
 
 	formname = form->r.idval;
 	/* test for primitive names here */
+	/* WARNING: this switch must match ptable in fill_table() in */
+	/* compex.c, and primindex in liststor.c: the same primitive at */
+	/* the same number, taking the same parameters, in the same order. */
+	/* Adding, removing or renumbering a case, or changing how it */
+	/* takes its parameters, needs the matching edit in fill_table(). */
 	switch (formname) {
 		case 1:	 
 			res = form->lefptr; /* quote */

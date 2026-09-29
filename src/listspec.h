@@ -161,6 +161,8 @@ extern    char       *getident (int);
 extern    int        atomidcount; /* identifiers currently stored in atomstore/atomindex */
 extern    int        atomcharsused; /* characters currently stored in atomstore */
 extern    int        atomcap; /* current allocated capacity of atomstore/atomindex, grows toward MAXATOMS */
+/* primitive numbers: primindex (liststor.c), the switch in */
+/* lx_eval_internal (main.c) and fill_table (compex.c) must all match */
 extern    const int  maxprims; /* number of primitive operations */
 /* defs for main list access routines */
 

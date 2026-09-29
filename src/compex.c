@@ -33,6 +33,7 @@
 
 typedef uint8_t byte;
 #define CODEMEM_SIZE 1000 /* size of the executable area used by compex */
+#define ARENA_SIZE 65536 /* permanent executable area for function bodies */
 
 
 
@@ -287,8 +288,6 @@ sprintf(outbuf, "\n"); condpr(stdout);
 /* runs the compiled body and unbinds. Assumes a compiled function is */
 /* never redefined or edited. */
 
-#define ARENA_SIZE 65536 /* permanent executable area for function bodies */
-
 typedef struct cfunc {
 	int atomid;            /* the function name's atom id */
 	SLC *lambda;           /* its (lambda (args) body...) definition */
@@ -327,7 +326,8 @@ cfunc *cf;
 if (ctable == NULL) {
 	ctable = calloc(MAXATOMS, sizeof *ctable);
 	if (ctable == NULL) {
-		return NULL;
+		puts("Fatal: compex: No compiled function table allocate");
+		exit(8);
 	}
 }
 if (id < 0 || id >= MAXATOMS) {
@@ -338,7 +338,8 @@ if (ctable[id] != NULL) {
 }
 cf = calloc(1, sizeof *cf);
 if (cf == NULL) {
-	return NULL;
+	puts("Fatal: compex: No compiled function entry allocate");
+	exit(8);
 }
 cf->atomid = id;
 cf->lambda = lam;
@@ -404,7 +405,7 @@ return res;
 /* call in an argument, (f (g 1) (g 2)), has its own. Extra args are */
 /* not evaluated, as in lambda_bind */
 
-#define MAXFRAMES 100000
+#define MAXFRAMES 10000
 static SLC *frame_pending[MAXFRAMES]; /* newest binding first */
 static SLC *frame_last[MAXFRAMES];    /* the first binding made */
 static int  frame_count[MAXFRAMES];
@@ -413,8 +414,8 @@ static int  frame_depth = 0;
 static void cx_frame_begin(void)
 {
 if (frame_depth >= MAXFRAMES - 1) {
-	fprintf(stdout, "Error: compiled calls nested too deep\n");
-	longjmp(main_env, 2);
+	puts("Fatal: compex: compiled calls nested too deep");
+	exit(9);
 }
 frame_depth++;
 frame_pending[frame_depth] = NULL;
@@ -510,15 +511,15 @@ return n;
 /* their own) while the second is worked out; then the two are */
 /* compared as lx_eq compares them */
 
-#define MAXEQ 100000
+#define MAXEQ 10000
 static SLC *eq_first[MAXEQ];
 static int  eq_depth = 0;
 
 static void cx_eq_first(SLC *value)
 {
 if (eq_depth >= MAXEQ - 1) {
-	fprintf(stdout, "Error: compiled eq nested too deep\n");
-	longjmp(main_env, 2);
+	puts("Fatal: compex: compiled eq nested too deep");
+	exit(9);
 }
 mark_req(value);
 eq_first[++eq_depth] = value;
@@ -554,7 +555,7 @@ static void compile(SLC *x, primentry *tab, int depth);
 /* code jumps straight to cx_arith_end, skipping the rest, as lx_plus */
 /* returns at once. */
 
-#define MAXARITH 100000 /* nesting depth of + and - being worked out */
+#define MAXARITH 10000 /* nesting depth of + - * / being worked out */
 static float arith_total[MAXARITH];
 static int   arith_count[MAXARITH];
 static SLC  *arith_error[MAXARITH]; /* report_error's value, if any */
@@ -564,8 +565,8 @@ static int   arith_depth = 0;
 static void cx_arith_begin(void)
 {
 if (arith_depth >= MAXARITH - 1) {
-	fprintf(stdout, "Error: compiled arithmetic nested too deep\n");
-	longjmp(main_env, 2);
+	puts("Fatal: compex: compiled arithmetic nested too deep");
+	exit(9);
 }
 arith_depth++;
 arith_total[arith_depth] = 0.0;
@@ -989,7 +990,8 @@ if (arena == NULL && pendingfns != NULL) {
 	byte *m = mmap(NULL, ARENA_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
 			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (m == MAP_FAILED) {
-		return false;
+		puts("Fatal: compex: No executable memory allocate for functions");
+		exit(8);
 	}
 	arena = m;
 }
@@ -1043,6 +1045,11 @@ return true;
 /* param values, special handling; as the switch in lx_eval_internal. */
 /* Unlisted ids stay zero, so they fall back to lx_eval(form). Filled on */
 /* first use, by lx_compex or compex_lambda_call */
+/* WARNING: this table must match the primitive switch in */
+/* lx_eval_internal in main.c, and primindex in liststor.c: the same */
+/* primitive at the same number, taking the same parameters, in the */
+/* same order. An edit to a primitive in the switch (added, removed, */
+/* renumbered, or its parameters changed) needs the matching edit here. */
 static primentry ptable[80];       /* indexed by primitive id */
 static bool goodtable = false;     /* true once ptable has been filled */
 
@@ -1294,7 +1301,8 @@ if (memptr == NULL) {
 	byte *m = mmap(NULL, CODEMEM_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC,
 			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (m == MAP_FAILED) {
-		return report_error("compex", "cannot allocate executable memory", NULL, FALSE);
+		puts("Fatal: compex: No executable memory allocate");
+		exit(8);
 	}
 	memptr = m;
 }

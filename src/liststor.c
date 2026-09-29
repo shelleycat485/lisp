@@ -299,6 +299,9 @@ if ((inptr->lstat == LSLST) && (inptr->r.rigptr == NULL) && (inptr->lefptr == 0)
 SmallString *atomstore = NULL;
 int *atomindex = NULL;
 int atomcap = 500;   /* current allocated slot capacity; grows toward MAXATOMS */
+/* primitive n's name. Must match the switch in lx_eval_internal (main.c)
+   and ptable in fill_table (compex.c), number for number: add, remove or
+   renumber a primitive in all three */
 char *primindex[80] =
  {
   "",
