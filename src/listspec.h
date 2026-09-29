@@ -170,6 +170,7 @@ extern void             initmainlist(void );
 extern SLC  *frlptr, *oblptr, *binlptr, *prlptr;
 int                    isnullcell  (SLC *inptr);
 extern SLC              *sear_oblist(SLC * inatom);
+extern void             oblcache_invalidate(void); /* after adding to the oblist */
 extern void            garbage_coll(int totalwipe);
 extern void            recmark (SLC *cell);
 void check_keyboard(void);

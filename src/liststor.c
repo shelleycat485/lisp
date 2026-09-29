@@ -205,13 +205,57 @@ string_garbage();
    static inline, so they're visible for inlining from every .c file. */
 
 
+/* small move-to-front cache in front of sear_oblist()'s oblist walk,
+   the same scheme as v3.25's atomcache in front of srchident(). Holds
+   the last few ids looked up in the oblist, most recent first, with the
+   entry cell found, or NULL if the id is not in the oblist (so the
+   redefinition check on a primitive such as car doesn't walk the whole
+   oblist every time). The binding list is always searched first, as
+   before, so dynamic scoping is unchanged.
+   An entry cell stays valid for good: the oblist only grows (lx_set
+   adds an entry only when none is found, and changes values in place)
+   and its cells are always marked by the gc. Only a NULL result can go
+   stale, so lx_set calls oblcache_invalidate() when it adds an entry.
+   A program that rplaca's or rplacd's the list (obl) returns could get
+   round the cache, but that would corrupt the oblist anyway. */
+
+#define OBLCACHE_SIZE 31
+
+typedef struct {
+	int id;       /* the atom id looked up */
+	SLC *entry;   /* its oblist entry cell, NULL if it has none */
+} OblCacheEntry;
+
+static OblCacheEntry oblcache[OBLCACHE_SIZE];
+static int oblcache_used = 0;   /* number of occupied entries, 0..OBLCACHE_SIZE */
+
+void oblcache_invalidate(void)
+{
+	oblcache_used = 0;
+} /* end function oblcache_invalidate */
+
+/* a fresh id appends while there's room, otherwise displaces the last
+   (least recently used) entry; either way it ends up at index 0 */
+static void oblcache_record(int id, SLC *entry)
+{
+int i;
+
+if (oblcache_used < OBLCACHE_SIZE) oblcache_used++;
+for (i = oblcache_used - 1; i > 0; i--) {
+	oblcache[i] = oblcache[i-1];
+}
+oblcache[0].id = id;
+oblcache[0].entry = entry;
+} /* end function oblcache_record */
+
 SLC *sear_oblist (SLC *inatom)
 {
-int inid, pass;
+int inid, i;
 #ifdef DEBUG
 int guardleft;
 #endif
 SLC *wkptr, *oblidptr;
+OblCacheEntry found;
 
 /* searches the oblist for an entry matching the id of the atom supplied */
 /* searches the binding list before the oblist */
@@ -222,32 +266,49 @@ SLC *wkptr, *oblidptr;
 
 if ((isnullcell(inatom)==FALSE) && (inatom->lstat == IDATOM)) {
 	inid = inatom->r.idval;
-	pass = 1;
 #ifdef DEBUG
 	guardleft = MAXLELE - 20;
 #endif
-	while (pass <= 2) {
-		if (pass == 1) {
-			wkptr = binlptr; /* first pass of outer loop */
-		} else {
-			wkptr = oblptr;  /* second pass of outer loop */
+	/* first the binding list, always searched in full */
+	for (wkptr = binlptr; wkptr; wkptr = wkptr->lefptr) {
+		oblidptr = wkptr->r.rigptr;
+		if (inid == oblidptr->r.idval) {
+			return wkptr; /* found the id match */
 		}
-		while (wkptr) {
-			oblidptr = wkptr->r.rigptr;
-			if (inid == oblidptr->r.idval) {
-				/* found the id match */
-				return wkptr;
-			}
-			wkptr = wkptr->lefptr;
 #ifdef DEBUG
-			if (--guardleft == 0){
-				puts("Lisp Error in sear_oblist");
-				longjmp (main_env, 2);
-			}
+		if (--guardleft == 0){
+			puts("Lisp Error in sear_oblist");
+			longjmp (main_env, 2);
+		}
 #endif
-		} /* end loop */
-		pass++;
-	} /* end outer loop */
+	}
+	/* then the cache: a hit moves to the front. The entry is copied
+	   first, since the shift overwrites oblcache[i] */
+	for (i = 0; i < oblcache_used; i++) {
+		if (oblcache[i].id == inid) {
+			found = oblcache[i];
+			for ( ; i > 0; i--) {
+				oblcache[i] = oblcache[i-1];
+			}
+			oblcache[0] = found;
+			return found.entry;
+		}
+	}
+	/* then the oblist itself; the result, found or not, is cached */
+	for (wkptr = oblptr; wkptr; wkptr = wkptr->lefptr) {
+		oblidptr = wkptr->r.rigptr;
+		if (inid == oblidptr->r.idval) {
+			break; /* found the id match */
+		}
+#ifdef DEBUG
+		if (--guardleft == 0){
+			puts("Lisp Error in sear_oblist");
+			longjmp (main_env, 2);
+		}
+#endif
+	}
+	oblcache_record(inid, wkptr);
+	return wkptr;
 } /* end if non null target given */
 return NULL; /* not found it */
 } /* end function sear_oblist */

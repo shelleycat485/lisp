@@ -32,7 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.57"
+#define LISPVER "3.58"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -2190,6 +2190,7 @@ if (newptr == NULL) {
 	newptr->lefptr = oblptr;
 	oblptr = newptr;
 	newptr->r.rigptr = a1ptr;
+	oblcache_invalidate(); /* its cached "not in the oblist" is now wrong */
 } 
 tptr = newptr->r.rigptr; 
 if (isnullcell(a2ptr)==FALSE) {

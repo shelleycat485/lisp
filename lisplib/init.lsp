@@ -322,3 +322,8 @@
     closure_sym_
   )
 )
+
+; run defun'd functions compiled from here on (compiled on first call).
+; (compex 0) goes back to the interpreter, (compex 2) runs both and
+; warns if they differ; see compex in helptext.lsp
+(compex 1)
