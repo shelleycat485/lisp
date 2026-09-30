@@ -38,19 +38,6 @@
   )
 )
 
-; using local variable to save recalculating alis in every call
-(defunloc toupcase (lis)
-  (local alis)
-  (or (member 'alis (oblist)) (setq alis (combine (alphablo) (alphabet))))
-  (cond
-    ((null lis) () )
-    ((assoc (car lis) alis) (cons (cadr (assoc (car lis) alis)) (toupcase (cdr lis))))
-    (t (cons (car lis) (toupcase (cdr lis))))
-    )
-)
-
-
-
 ; deletes letters from list, so SOSE becomes SOE
 (defun deleteduplicates (lis) (reverse (deldup1 (reverse lis))))
 (defun deldup1 (lis)

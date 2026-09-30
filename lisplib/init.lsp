@@ -57,7 +57,7 @@
 
 
 (defun greaterp (n1 n2) (minusp (- n2 n1))  )
-(defun lesserp (n1 n2) (not (greaterp n1 n2))   )
+(defun lesserp (n1 n2) (greaterp n2 n1))
 
 
 ; to give an printout of all defined objects
@@ -156,7 +156,7 @@
 ; lisp functions reverse and append are provided as primitives
 
 ; returns a unique atom (in current run of program), of form A10001
-; the main use for it is in defunloc
+; the main use for it is in closure
 ; note that this does not work in recursion
 (defun makesym () 
   (implode    (cons 'A (explode 
@@ -179,60 +179,6 @@
 
 (defun pr2 (x) (print x) (print (implode (list '10 '13)) ))
 
-
-; like defun, but can have local variables for the function. e.g.
-;(defunloc ff(x)(local n m)(setq n 2)(setq m 3)(pr2(+ n m))(pr2(quote ff)))
-;e.g (defunloc gg() (local a) (local b) (setq a (+(setq b 1) 1)) (pr2 a))
-; note the (local v1 v2...) expression
-; does it by rewriting function definition to use (makesym) variables
-(defun defunloc lis
-  (cond
-         ( (collectlocal lis () )  (defunloc1 lis () ))
-         ( t "if using defunloc must have a (local x ) clause" )
-  )
-)
-
-(defun defunloc1 (lis locs)
-  (setq locs (collectlocal lis ()))
-  ;(print (cons 'locs! are: locs))
-  (setq lis (discardlocal lis))
-  (loop
-    (setq lis (subst (car locs) (makesym) lis ))
-    (while (setq locs (cdr locs)))
-  )  
-  (eval (cons 'defun lis))
-)
-
-
-(defun collectlocal (lis res) ; collects all the (local a b) terms
-  (loop
-    (and (not (atom (car lis))) (eq (caar lis) 'local)
-               (setq res (append res (cdar lis)) ))
-    (while (setq lis (cdr lis)))
-  )
-  res
-)
-
-(defun discardlocal (lis) ; removes all the (local b) terms from the list
-  (cond
-    ((null lis) lis)
-    ((atom (car lis)) (cons (car lis) (discardlocal (cdr lis))))
-    ((eq (caar lis) 'local)           (discardlocal (cdr lis)))
-    ( t               (cons (car lis) (discardlocal (cdr lis))))
-  )
-)
-
-
-(defunloc revdemo (l) ; reverses a top level list, using a local variable
-                      ; this is not going to be recursive
-  (local result)
-  (setq result ())
-  (loop
-    (setq result (cons (car l) result))
-    (while (setq l (cdr l)))
-  )
-  result
-)
 
 ; let is a Subr, allows local variables to be declared and bound
 ; within the let block only.  Will work will recursion.

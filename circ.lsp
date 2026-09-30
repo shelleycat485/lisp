@@ -12,16 +12,3 @@
   (let ( (tau (* 2 3.14)) )
  (repeat teeth  '(list (radial r  (* tau (/ r teeth)) )(turn (/ 360 teeth)) ))
   ))
-
-; draws a cogwheel as above, but
-; this version uses local scope variables
-(defunloc cogl (radius teeth)
-	  (local tau) (local turnang)
-	  (setq tau (* 2 3.142))
-	  (setq turnang (/ 360 teeth))
-  (repeat teeth '(and (radial radius (* tau (/ radius teeth))) (turn turnang)
-		     ))
-  )
-
-
-
