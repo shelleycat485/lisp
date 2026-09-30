@@ -59,6 +59,7 @@ enum {
 	SP_EQ,        /* eq: both arguments compiled, then cx_eq_* */
 	SP_LOOP,      /* loop: terms compiled, with a jump back to the first */
 	SP_WHILE,     /* while, until: test and the forms after it compiled */
+	SP_SET,       /* set, setq: arguments compiled, then cx_set_* / cx_setq */
 	SP_FALLBACK   /* not compiled: lx_eval(whole form) */
 };
 typedef struct {
@@ -545,7 +546,130 @@ if (a1->lstat == a2->lstat && a1->r.rigptr == a2->r.rigptr) {
 return NULL; /* not equal */
 } /* end function cx_eq_second */
 
+
+/* ---- compiled set and setq ---- */
+/* As lx_set (main.c): the value is worked out, then the name is looked */
+/* up (a set within a binding changes the binding) and, if it is new, */
+/* added to the oblist. setq's name is known when compiling. set's is */
+/* the value of its first argument, kept gcflagged on a stack (one per */
+/* set being worked out) while the second is worked out, as eq does. */
+/* Unlike lx_set, a value's gcflag is left as it was found */
+
+#define MAXSET 10000
+static SLC *set_first[MAXSET];
+static int  set_depth = 0;
+
+/* gives name (in the oblist, or namecell added to it if not) the value; */
+/* namecell is made here, a copy of name, if it is NULL and is needed */
+static void cx_assign(SLC *name, SLC *namecell, SLC *value)
+{
+SLC *entry = sear_oblist(name);
+
+if (entry == NULL) {
+	bool wasflagged = (value != NULL && value->gcflagged);
+
+	mark_req(value); /* getfree can run a garbage collection */
+	if (namecell == NULL) {
+		namecell = getfree();
+		copycell(name, namecell);
+		namecell->lefptr = NULL;
+		mark_req(namecell);
+		entry = getfree();
+		mark_not(namecell);
+	} else {
+		entry = getfree();
+	}
+	if (!wasflagged) {
+		mark_not(value);
+	}
+	/* add the new name element to the oblist */
+	entry->lefptr = oblptr;
+	oblptr = entry;
+	entry->r.rigptr = namecell;
+	oblcache_invalidate(); /* its cached "not in the oblist" is now wrong */
+}
+/* only do pointing if not null definition */
+entry->r.rigptr->lefptr = isnullcell(value) ? NULL : value;
+} /* end function cx_assign */
+
+/* (setq name expr): value is expr's, name the name's cell in the form */
+static SLC *cx_setq(SLC *value, SLC *name)
+{
+cx_assign(name, NULL, value);
+return value;
+} /* end function cx_setq */
+
+static void cx_set_first(SLC *value)
+{
+if (set_depth >= MAXSET - 1) {
+	puts("Fatal: compex: compiled set nested too deep");
+	exit(9);
+}
+mark_req(value);
+set_first[++set_depth] = value;
+} /* end function cx_set_first */
+
+/* form is the (set ...) form's head cell, for the error report. As in */
+/* lx_set, the first argument's value is itself the name cell if new */
+static SLC *cx_set_second(SLC *value, SLC *form)
+{
+SLC *name = set_first[set_depth--];
+SLC *retval = value;
+
+if (name == NULL || name->lstat != IDATOM) {
+	bool wasflagged = (value != NULL && value->gcflagged);
+
+	mark_req(value);
+	retval = report_error("set(q)","args must be non-numeric atoms",form, TRUE);
+	if (!wasflagged) {
+		mark_not(value);
+	}
+} else {
+	cx_assign(name, name, value);
+}
+mark_not(name);
+return retval;
+} /* end function cx_set_second */
+
+/* the value of a variable, atom its cell in the form. One with no */
+/* value (an error, or a primitive's name) is left to lx_eval, as is */
+/* every one while the eval trace is on, so that it is printed */
+static SLC *cx_var(SLC *atom)
+{
+SLC *entry;
+
+if (trace == FALSE && (entry = sear_oblist(atom)) != NULL) {
+	return entry->r.rigptr->lefptr;
+}
+return lx_eval(atom);
+} /* end function cx_var */
+
 static void compile(SLC *x, primentry *tab, int depth);
+
+/* a copy of a number in a form, not linked to the argument after it */
+static SLC *cx_num_copy(SLC *num)
+{
+SLC *res = getfree();
+
+copycell(num, res);
+res->lefptr = NULL;
+return res;
+} /* end function cx_num_copy */
+
+/* compiles the value argument of set or setq. lx_set evaluates a copy */
+/* of the argument's cell, so a number is always given as a new cell, */
+/* never the one in the form: a variable's value can have its link */
+/* changed (by rplaca), and that must not change the form */
+static void compile_set_value(SLC *v, primentry *tab, int depth)
+{
+if (v != NULL && v->lstat == NUMATOM) {
+	trace_step(depth, "copy of const", v);
+	emit_const_arg((uintptr_t)v);
+	emit_call((uintptr_t)cx_num_copy);
+	return;
+}
+compile(v, tab, depth);
+} /* end function compile_set_value */
 
 
 /* ---- compiled + - * / and sqrt ---- */
@@ -1041,6 +1165,34 @@ if (x->lstat == LSLST && x->r.rigptr != NULL) {
 			emit_param(1, pe->paramval);
 			emit_call((uintptr_t)lx_while);
 			return;
+		case SP_SET:
+			if (pe->paramval == EVAL) {
+				/* (set a b): a missing arg is (), extra args are */
+				/* not evaluated, as in lx_set */
+				trace_step(depth, "set:", NULL);
+				compile(head->lefptr, tab, depth + 1);
+				emit_result_to_arg();
+				emit_call((uintptr_t)cx_set_first);
+				compile_set_value(head->lefptr ? head->lefptr->lefptr : NULL, tab, depth + 1);
+				emit_result_to_arg();
+				emit_const_arg2((uintptr_t)head);
+				emit_call((uintptr_t)cx_set_second);
+				return;
+			}
+			if (head->lefptr != NULL && head->lefptr->lstat == IDATOM) {
+				trace_step(depth, "setq:", head->lefptr);
+				compile_set_value(head->lefptr->lefptr, tab, depth + 1);
+				emit_result_to_arg();
+				emit_const_arg2((uintptr_t)head->lefptr);
+				emit_call((uintptr_t)cx_setq);
+				return;
+			}
+			/* setq's name is not an atom: let lx_set report it */
+			trace_step(depth, "call lx_set, param 0:", x);
+			emit_const_arg((uintptr_t)head);
+			emit_param(1, NOEVAL);
+			emit_call((uintptr_t)lx_set);
+			return;
 		case SP_UNEVALARG:
 			snprintf(what, sizeof what, "call lx_%s, unevaluated:", pe->name);
 			trace_step(depth, what, head->lefptr);
@@ -1118,8 +1270,22 @@ if (x->lstat == LSLST && x->r.rigptr != NULL && x->r.rigptr->lstat == IDATOM) {
 		return;
 	}
 }
-/* anything else: an uncompiled primitive, lambda, a variable, */
-/* a number or null - let the interpreter do it */
+/* a variable: its value looked up here, as lx_eval_internal does */
+if (x->lstat == IDATOM) {
+	trace_step(depth, "variable", x);
+	emit_const_arg((uintptr_t)x);
+	emit_call((uintptr_t)cx_var);
+	return;
+}
+/* a number that is the last argument: lx_eval gives the cell itself */
+/* (one that is not the last is copied, without its link to the next) */
+if (x->lstat == NUMATOM && x->lefptr == NULL) {
+	trace_step(depth, "const", x);
+	emit_const_result((uintptr_t)x);
+	return;
+}
+/* anything else: an uncompiled primitive, lambda, a number that */
+/* is not the last argument or null - let the interpreter do it */
 trace_step(depth, "call lx_eval:", x);
 emit_const_arg((uintptr_t)x);
 emit_call((uintptr_t)lx_eval);
@@ -1221,8 +1387,8 @@ if (goodtable) {
 	ptable[12] = (primentry){"loop",    (anyfn)lx_loop,       false, 0, 0, 0, SP_LOOP};
 	ptable[13] = (primentry){"while",   (anyfn)lx_while,      false, 1, TRUE, 0, SP_WHILE};  /* while */
 	ptable[14] = (primentry){"while",   (anyfn)lx_while,      false, 1, FALSE, 0, SP_WHILE}; /* until */
-	ptable[15] = (primentry){"set",     (anyfn)lx_set,        false, 1, EVAL, 0, SP_NONE};  /* set */
-	ptable[16] = (primentry){"set",     (anyfn)lx_set,        false, 1, NOEVAL, 0, SP_NONE}; /* setq */
+	ptable[15] = (primentry){"set",     (anyfn)lx_set,        false, 1, EVAL, 0, SP_SET};  /* set */
+	ptable[16] = (primentry){"set",     (anyfn)lx_set,        false, 1, NOEVAL, 0, SP_SET}; /* setq */
 	ptable[17] = (primentry){"eof",     (anyfn)lx_eof,        true,  0, 0, 0, SP_NONE};
 	ptable[18] = (primentry){"ordinal", (anyfn)lx_ordinal,    true,  0, 0, 0, SP_NONE};
 	ptable[19] = (primentry){"minusp",  (anyfn)lx_minusp,     true,  0, 0, 0, SP_NONE};
@@ -1487,6 +1653,7 @@ memcpy(&codefn, &memptr, sizeof codefn); /* data pointer -> function pointer */
 arith_depth = 0; /* in case an abort left compiled arithmetic unfinished */
 frame_depth = 0; /* or a compiled call half set up */
 eq_depth = 0;    /* or an eq */
+set_depth = 0;   /* or a set */
 running = true;
 retval = codefn(); /* run the compiled code */
 running = false;
