@@ -32,7 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.60"
+#define LISPVER "3.61"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -1092,44 +1092,40 @@ return retval;
 SLC *lx_append(SLC *form)
 {
 SLC *a1ptr,*a2ptr, *oldtemp, *newtemp, *res, *wkptr;
+int n;
+
+/* the result is always a new list, a copy of the top level of both */
+/* arguments, so changing it (rplaca, rplacd) changes neither of them. */
+/* A missing argument, or one that evaluates to (), is an empty list: */
+/* (append () ()) gives () */
 
 a1ptr = form->lefptr;
 a2ptr = (a1ptr) ? a1ptr->lefptr :NULL;
 
-if (a1ptr == NULL || a2ptr == NULL) {
-	return report_error ("append", "must have two arguments", form, TRUE);
-}
 mark_req(a1ptr = lx_eval(a1ptr));
-a2ptr = lx_eval(a2ptr);
+mark_req(a2ptr = lx_eval(a2ptr));
 
-if (a2ptr == NULL) { /* if arg2 evals to (), nothing to append */
-	mark_not(a1ptr);
-	return a1ptr;
-}
-
-if (a1ptr == NULL) { /* if arg1 evals to (), nothing to prepend */
-	mark_not(a1ptr);
-	return a2ptr;
-}
-
-if (a1ptr->lstat != LSLST || a2ptr->lstat != LSLST) {
+if ((a1ptr != NULL && a1ptr->lstat != LSLST)
+    || (a2ptr != NULL && a2ptr->lstat != LSLST)) {
 	res = report_error ("append", "args must eval to lists", form, TRUE);
 	mark_not(a1ptr);
+	mark_not(a2ptr);
 	return NULL;
 }
 
-mark_req(a2ptr);
 mark_req(oldtemp = res = getfree());
-/* copy down the list a1ptr, which is known to be a list now */
-wkptr = a1ptr->r.rigptr;
-while (wkptr) {
-	copycell (wkptr, newtemp = getfree());
-	oldtemp->lefptr = newtemp;
-	oldtemp = newtemp;
-	wkptr = wkptr->lefptr;
+/* copy down the list a1ptr, then the list a2ptr, onto the result */
+for (n = 0; n < 2; n++) {
+	wkptr = (n == 0) ? a1ptr : a2ptr;
+	wkptr = (wkptr) ? wkptr->r.rigptr : NULL;
+	while (wkptr) {
+		copycell (wkptr, newtemp = getfree());
+		newtemp->lefptr = NULL;
+		oldtemp->lefptr = newtemp;
+		oldtemp = newtemp;
+		wkptr = wkptr->lefptr;
+	}
 }
-/* add on second list now */
-oldtemp->lefptr = a2ptr->r.rigptr;
 
 /* make res a proper list */
 res->r.rigptr = res->lefptr;
@@ -1137,6 +1133,9 @@ res->lefptr = NULL;
 mark_not(a1ptr);
 mark_not(a2ptr);
 mark_not(res);
+if (res->r.rigptr == NULL) {
+	return NULL; /* both lists were empty */
+}
 return res;
 
 } /* end function lx_append */
@@ -1207,7 +1206,7 @@ return a2ptr;
 
 SLC *lx_rplaca(SLC *form)
 {
-SLC *a1ptr,*a2ptr, *listcar, *listcdr, *retval;
+SLC *a1ptr,*a2ptr, *newcar, *retval;
 
 a1ptr = form->lefptr;
 a2ptr = (a1ptr) ? a1ptr->lefptr :NULL;
@@ -1220,13 +1219,19 @@ if (a1ptr == NULL || a1ptr->lstat != LSLST) {
 	retval = report_error ("rplaca", "first arg must eval to a list", a1ptr, TRUE);
 	goto exit;
 }
+if (a1ptr->r.rigptr == NULL) {
+	retval = report_error ("rplaca", "first arg must not be an empty list", a1ptr, TRUE);
+	goto exit;
+}
 mark_req(a2ptr = lx_eval(a2ptr));
-/* remember the rest of list a1ptr */
-listcar = a1ptr->r.rigptr;
-listcdr = listcar->lefptr;
-/* and do the dirty work */
-a1ptr->r.rigptr = a2ptr;
-a2ptr->lefptr = listcdr;
+/* the new first element is a copy of the value, a null cell for (): */
+/* the value's own cell may be a variable's value or part of a form, */
+/* so it must not be linked into the list */
+newcar = getfree();
+copycell (a2ptr, newcar);
+/* and do the dirty work: the rest of the list follows the new element */
+newcar->lefptr = (a1ptr->r.rigptr)->lefptr;
+a1ptr->r.rigptr = newcar;
 retval = a1ptr;
 
 exit:
@@ -1243,7 +1248,7 @@ return retval;
 
 SLC *lx_rplacd(SLC *form)
 {
-SLC *a1ptr,*a2ptr, *listcar, *retval;
+SLC *a1ptr,*a2ptr, *listcar, *newcdr, *retval;
 
 a1ptr = form->lefptr;
 a2ptr = (a1ptr) ? a1ptr->lefptr :NULL;
@@ -1256,10 +1261,28 @@ if (a1ptr == NULL || a1ptr->lstat != LSLST) {
 	retval = report_error ("rplacd", "first arg must eval to a list", a1ptr, TRUE);
 	goto exit;
 }
+if (a1ptr->r.rigptr == NULL) {
+	retval = report_error ("rplacd", "first arg must not be an empty list", a1ptr, TRUE);
+	goto exit;
+}
 /* move down to first ele of list, which we know is not null */
 listcar = a1ptr->r.rigptr;
-/* and do the dirty work */
-listcar->lefptr = lx_eval(a2ptr);
+mark_req(a2ptr = lx_eval(a2ptr));
+/* and do the dirty work, the new rest of the list as lx_cons makes it */
+if (a2ptr == NULL) {
+	listcar->lefptr = NULL;
+} else if (a2ptr->lstat == LSLST) {
+	/* a list: its elements are the rest, (rplacd '(a b c) '(f g)) is (a f g) */
+	listcar->lefptr = a2ptr->r.rigptr;
+} else {
+	/* an atom: a copy of it is the rest. Its own cell may be a */
+	/* variable's value or part of a form, so must not be linked in */
+	newcdr = getfree();
+	copycell (a2ptr, newcdr);
+	newcdr->lefptr = NULL;
+	listcar->lefptr = newcdr;
+}
+mark_not(a2ptr);
 retval = a1ptr;
 
 exit:
@@ -1877,7 +1900,7 @@ return res;
 
 SLC *lx_cons(SLC *form)
 {
-SLC *a1ptr,*a2ptr,*newptr, *res;
+SLC *a1ptr,*a2ptr,*newptr, *res, *tail;
 
 
 a1ptr = form->lefptr;
@@ -1899,8 +1922,19 @@ if (a2ptr) {
 	if (a2ptr->lstat == LSLST) {
 		newptr->lefptr = a2ptr->r.rigptr;
 	} else {
-		/* atom */
-		newptr->lefptr = a2ptr;
+		/* atom: a copy of it is the last element. Its own cell may */
+		/* be a variable's value or part of a form, so must not be */
+		/* linked into the list */
+		bool wasflagged = a2ptr->gcflagged;
+
+		mark_req(a2ptr); /* getfree can run a garbage collection */
+		tail = getfree();
+		if (!wasflagged) {
+			mark_not(a2ptr);
+		}
+		copycell (a2ptr, tail);
+		tail->lefptr = NULL;
+		newptr->lefptr = tail;
 	} /* else a2 type test */
 } 
 mark_not(res);
@@ -2186,6 +2220,16 @@ if (a1ptr == NULL || a1ptr->lstat != IDATOM) {
 newptr= sear_oblist(a1ptr);
 if (newptr == NULL) {
 	/* add the new name element to the oblist */
+	if (mode == EVAL) {
+		/* set: the name cell is a copy of the first arg's value, */
+		/* whose own cell may be a variable's value or part of a */
+		/* form (setq's is a copy already) */
+		tptr = getfree();
+		copycell (a1ptr, tptr);
+		tptr->lefptr = NULL;
+		mark_not(a1ptr);
+		mark_req(a1ptr = tptr);
+	}
 	newptr = getfree();
 	newptr->lefptr = oblptr;
 	oblptr = newptr;

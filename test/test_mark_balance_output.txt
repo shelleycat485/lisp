@@ -3,7 +3,7 @@
   get after put   ... PASS  got=  111  
   get after remprop   ... PASS  got= () 
   rplaca replaces car   ... PASS  got= ( 99  2  3 ) 
-  rplacd replaces cdr   ... PASS  got= ( 1 ( 8  9 )) 
+  rplacd replaces cdr   ... PASS  got= ( 1  8  9 ) 
   
   stress loop: put/get/remprop/rplaca/rplacd under GC pressure  
   stress loop had zero mismatches   ... PASS  got=  0  

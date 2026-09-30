@@ -50,13 +50,12 @@
 (check "rplaca replaces car" (list 99 2 3) lst1)
 
 ; --- basic rplacd ---
-; note: rplacd here links the cdr slot directly to whatever a2ptr
-; evaluates to, so a list arg is spliced in as one nested element
-; rather than flattened - (rplacd '(1 2 3) '(8 9)) => (1 (8 9)).
-; this is pre-existing behaviour, unrelated to the mark-balance fix.
+; note: from v3.61 a list arg's elements become the rest of the list,
+; as cons makes it - (rplacd '(1 2 3) '(8 9)) => (1 8 9). Before that
+; the list was linked in as one nested element, (1 (8 9)).
 (setq lst2 (list 1 2 3))
 (rplacd lst2 (list 8 9))
-(check "rplacd replaces cdr" (list 1 (list 8 9)) lst2)
+(check "rplacd replaces cdr" (list 1 8 9) lst2)
 
 (write outfh cr)
 (write outfh "stress loop: put/get/remprop/rplaca/rplacd under GC pressure")
@@ -81,7 +80,7 @@
   (cond ((not (equal (* i 2) (car lst)))
          (setq stressfail (plus stressfail 1))))
   (rplacd lst (list i i))
-  (cond ((not (equal (list (list i i)) (cdr lst)))
+  (cond ((not (equal (list i i) (cdr lst)))
          (setq stressfail (plus stressfail 1))))
   ; extra garbage to help trigger garbage_coll() during the above
   (setq junk (list i i i i i i i i i i))

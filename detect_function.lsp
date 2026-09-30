@@ -1,9 +1,14 @@
 ; Show what type of arguments functions have, and what definions are not
-; functions.  Need to load read_eles_from_file.lsp.
+; functions.  Written to output to a terminal, in colour: the terminal
+; colour functions (screen_col_...) are in lisplib/ed.lsp, loaded here.
+; Usage (from the lisp directory):
+;   lisp lisplib/init.lsp detect_function.lsp
 
 ; definitions look like this roughly:
 ; funname lambda (par par par) other_eles
 ; funname lambda uneval_par other_eles
+
+(load 'lisplib/ed.lsp)
 
 (setq aaa (oblist))
 

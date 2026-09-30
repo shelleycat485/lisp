@@ -559,26 +559,24 @@ return NULL; /* not equal */
 static SLC *set_first[MAXSET];
 static int  set_depth = 0;
 
-/* gives name (in the oblist, or namecell added to it if not) the value; */
-/* namecell is made here, a copy of name, if it is NULL and is needed */
-static void cx_assign(SLC *name, SLC *namecell, SLC *value)
+/* gives name the value; a name not in the oblist is added to it, its */
+/* name cell a copy of name, as lx_set makes (name's own cell is part */
+/* of a form, or may be a variable's value) */
+static void cx_assign(SLC *name, SLC *value)
 {
 SLC *entry = sear_oblist(name);
+SLC *namecell;
 
 if (entry == NULL) {
 	bool wasflagged = (value != NULL && value->gcflagged);
 
 	mark_req(value); /* getfree can run a garbage collection */
-	if (namecell == NULL) {
-		namecell = getfree();
-		copycell(name, namecell);
-		namecell->lefptr = NULL;
-		mark_req(namecell);
-		entry = getfree();
-		mark_not(namecell);
-	} else {
-		entry = getfree();
-	}
+	namecell = getfree();
+	copycell(name, namecell);
+	namecell->lefptr = NULL;
+	mark_req(namecell);
+	entry = getfree();
+	mark_not(namecell);
 	if (!wasflagged) {
 		mark_not(value);
 	}
@@ -595,7 +593,7 @@ entry->r.rigptr->lefptr = isnullcell(value) ? NULL : value;
 /* (setq name expr): value is expr's, name the name's cell in the form */
 static SLC *cx_setq(SLC *value, SLC *name)
 {
-cx_assign(name, NULL, value);
+cx_assign(name, value);
 return value;
 } /* end function cx_setq */
 
@@ -609,8 +607,7 @@ mark_req(value);
 set_first[++set_depth] = value;
 } /* end function cx_set_first */
 
-/* form is the (set ...) form's head cell, for the error report. As in */
-/* lx_set, the first argument's value is itself the name cell if new */
+/* form is the (set ...) form's head cell, for the error report */
 static SLC *cx_set_second(SLC *value, SLC *form)
 {
 SLC *name = set_first[set_depth--];
@@ -625,7 +622,7 @@ if (name == NULL || name->lstat != IDATOM) {
 		mark_not(value);
 	}
 } else {
-	cx_assign(name, name, value);
+	cx_assign(name, value);
 }
 mark_not(name);
 return retval;
@@ -658,8 +655,7 @@ return res;
 
 /* compiles the value argument of set or setq. lx_set evaluates a copy */
 /* of the argument's cell, so a number is always given as a new cell, */
-/* never the one in the form: a variable's value can have its link */
-/* changed (by rplaca), and that must not change the form */
+/* never the one in the form, and the same is done here */
 static void compile_set_value(SLC *v, primentry *tab, int depth)
 {
 if (v != NULL && v->lstat == NUMATOM) {
