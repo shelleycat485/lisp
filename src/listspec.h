@@ -92,6 +92,10 @@ extern int lex_sexp(FILE * infile, SLC **retval);
 
 extern jmp_buf  main_env;
 extern int  trace,looplevel, garb_announce;
+/* loops, main.c: loopgo[looplevel] is cleared by while / until to stop */
+/* the current loop; the compiled loop in compex.c uses them too */
+#define MAXLOOP 50
+extern char loopgo[];
 
 /* any functions starting lx_ are lisp primitives, accessible directly */
 

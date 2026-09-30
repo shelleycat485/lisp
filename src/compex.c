@@ -57,6 +57,8 @@ enum {
 	SP_AND,       /* and: arguments compiled, jump out at the first () */
 	SP_OR,        /* or: arguments compiled, jump out at the first non-() */
 	SP_EQ,        /* eq: both arguments compiled, then cx_eq_* */
+	SP_LOOP,      /* loop: terms compiled, with a jump back to the first */
+	SP_WHILE,     /* while, until: test and the forms after it compiled */
 	SP_FALLBACK   /* not compiled: lx_eval(whole form) */
 };
 typedef struct {
@@ -131,8 +133,8 @@ static void emit_result_to_arg(void)  { }                  /* x0 already */
 static void emit_result_to_arg2(void) { emit32(0xaa0003e1); } /* mov x1, x0 */
 static void emit_save_result(void)    { emit32(0xf9000be0); } /* str x0, [sp, #16] */
 static void emit_restore_result(void) { emit32(0xf9400be0); } /* ldr x0, [sp, #16] */
-/* forward jumps: emitted with a zero offset, the returned site is */
-/* patched once the target is known */
+/* jumps: emitted with a zero offset, the returned site is patched once */
+/* the target is known (forward), or at once (back, to a loop's start) */
 static byte *emit_jump_if_int_false(void)
 {
 byte *site = emit_p;
@@ -216,8 +218,9 @@ static void emit_restore_result(void)
 {
 emit8(0x48); emit8(0x8b); emit8(0x04); emit8(0x24); /* mov rax, [rsp] */
 }
-/* forward jumps: emitted with a zero offset, the returned site (the */
-/* rel32 field) is patched once the target is known */
+/* jumps: emitted with a zero offset, the returned site (the rel32 */
+/* field) is patched once the target is known (forward), or at once */
+/* (back, to a loop's start) */
 static byte *emit_jump_if_int_false(void)
 {
 byte *site;
@@ -785,6 +788,132 @@ if (emit_ok) {
 return true;
 } /* end function compile_andor */
 
+
+/* ---- compiled loop, while and until ---- */
+/* As lx_loop and lx_while (main.c), and with their looplevel and */
+/* loopgo, so compiled and interpreted loops, whiles and untils work */
+/* on each other: a while stops the loop running at the time, whether */
+/* it is written in that loop, in a cond in it or in a function called */
+/* from it */
+
+static void cx_loop_begin(void)
+{
+if (++looplevel >= MAXLOOP-1 ) {
+	fprintf (stdout, "Error: loops nested too deep");
+	longjmp(main_env,2);
+}
+loopgo[looplevel] = TRUE;
+} /* end function cx_loop_begin */
+
+/* after each term: 0 if a while or until has stopped the loop */
+static int cx_loop_going(void)
+{
+return loopgo[looplevel];
+} /* end function cx_loop_going */
+
+/* res is the value of the last term evaluated, the loop's value */
+static SLC *cx_loop_end(SLC *res)
+{
+looplevel--;
+return res;
+} /* end function cx_loop_end */
+
+/* the test of while (test TRUE) or until (test FALSE): returns 1, and */
+/* stops the current loop, if the forms after the test are to be done */
+static int cx_while_test(SLC *value, int test)
+{
+if (isnullcell(value) == test) {
+	loopgo[looplevel] = FALSE;
+	return 1;
+}
+return 0;
+} /* end function cx_while_test */
+
+/* compiles (loop term...) as lx_loop does it: the terms in turn, over */
+/* and over, until a while or until stops it, then no more terms are */
+/* done; the value is that of the last term done. Each term is followed */
+/* by a jump out if the loop has been stopped, the last by a jump back */
+/* to the first. Returns false, having written nothing, if there are */
+/* too many terms */
+#define MAXLOOPTERMS 64
+static bool compile_loop(SLC *head, primentry *tab, int depth)
+{
+SLC *term;
+byte *outjumps[MAXLOOPTERMS];
+byte *top, *backjump;
+int n = 0, i;
+
+for (term = head->lefptr; term != NULL; term = term->lefptr) {
+	if (++n > MAXLOOPTERMS) {
+		return false;
+	}
+}
+n = 0;
+trace_step(depth, "loop:", NULL);
+emit_call((uintptr_t)cx_loop_begin);
+top = emit_p;
+emit_call((uintptr_t)check_keyboard); /* allow user break in here */
+for (term = head->lefptr; term != NULL; term = term->lefptr) {
+	compile(term, tab, depth + 1);
+	emit_save_result();
+	emit_call((uintptr_t)cx_loop_going);
+	outjumps[n++] = emit_jump_if_int_false(); /* stopped: out */
+}
+trace_step(depth + 1, "jump back to the first term", NULL);
+backjump = emit_jump();
+if (emit_ok) {
+	patch_jump(backjump, top);
+	for (i = 0; i < n; i++) {
+		patch_jump(outjumps[i], emit_p);
+	}
+}
+/* only reached by a jump out, so a term's value has been saved */
+emit_restore_result();
+emit_result_to_arg();
+emit_call((uintptr_t)cx_loop_end);
+return true;
+} /* end function compile_loop */
+
+/* compiles (while test form...) or (until test form...) as lx_while */
+/* does it: if the test is () (while) or not () (until) the current */
+/* loop is stopped and the forms are done, the value that of the last */
+/* form; otherwise, or with no forms, the value is the test's. Returns */
+/* false, having written nothing, if there is no test */
+static bool compile_while(SLC *head, primentry *pe, primentry *tab, int depth)
+{
+SLC *rest;
+byte *keepjump, *endjump;
+
+if (head->lefptr == NULL) {
+	return false;
+}
+trace_step(depth, pe->paramval ? "while:" : "until:", NULL);
+trace_step(depth + 1, "test", head->lefptr);
+compile(head->lefptr, tab, depth + 2);
+emit_save_result();
+emit_result_to_arg();
+emit_param(1, pe->paramval);
+emit_call((uintptr_t)cx_while_test);
+rest = head->lefptr->lefptr;
+if (rest == NULL) {
+	emit_restore_result();   /* the test's value either way */
+	return true;
+}
+keepjump = emit_jump_if_int_false(); /* loop not stopped: skip the forms */
+for (; rest != NULL; rest = rest->lefptr) {
+	compile(rest, tab, depth + 2);
+}
+endjump = emit_jump();
+if (emit_ok) {
+	patch_jump(keepjump, emit_p);
+}
+emit_restore_result();           /* the test's value */
+if (emit_ok) {
+	patch_jump(endjump, emit_p);
+}
+return true;
+} /* end function compile_while */
+
 /* writes code that leaves the value of cell x in the result register */
 static void compile(SLC *x, primentry *tab, int depth)
 {
@@ -891,6 +1020,26 @@ if (x->lstat == LSLST && x->r.rigptr != NULL) {
 			trace_step(depth, "call lx_cond:", x);
 			emit_const_arg((uintptr_t)head);
 			emit_call((uintptr_t)lx_cond);
+			return;
+		case SP_LOOP:
+			if (compile_loop(head, tab, depth)) {
+				return;
+			}
+			/* too many terms: call lx_loop with the form */
+			trace_step(depth, "call lx_loop:", x);
+			emit_const_arg((uintptr_t)head);
+			emit_call((uintptr_t)lx_loop);
+			return;
+		case SP_WHILE:
+			if (compile_while(head, pe, tab, depth)) {
+				return;
+			}
+			/* no test: call lx_while with the form */
+			snprintf(what, sizeof what, "call lx_while, param %d:", pe->paramval);
+			trace_step(depth, what, x);
+			emit_const_arg((uintptr_t)head);
+			emit_param(1, pe->paramval);
+			emit_call((uintptr_t)lx_while);
 			return;
 		case SP_UNEVALARG:
 			snprintf(what, sizeof what, "call lx_%s, unevaluated:", pe->name);
@@ -1069,9 +1218,9 @@ if (goodtable) {
 	ptable[9]  = (primentry){"or",      (anyfn)lx_or,         false, 0, 0, 0, SP_OR};
 	ptable[10] = (primentry){"cond",    (anyfn)lx_cond,       false, 0, 0, 0, SP_COND};
 	ptable[11] = (primentry){"list",    (anyfn)lx_list,       false, 0, 0, 0, SP_NONE};
-	ptable[12] = (primentry){"loop",    (anyfn)lx_loop,       false, 0, 0, 0, SP_NONE};
-	ptable[13] = (primentry){"while",   (anyfn)lx_while,      false, 1, TRUE, 0, SP_NONE};  /* while */
-	ptable[14] = (primentry){"while",   (anyfn)lx_while,      false, 1, FALSE, 0, SP_NONE}; /* until */
+	ptable[12] = (primentry){"loop",    (anyfn)lx_loop,       false, 0, 0, 0, SP_LOOP};
+	ptable[13] = (primentry){"while",   (anyfn)lx_while,      false, 1, TRUE, 0, SP_WHILE};  /* while */
+	ptable[14] = (primentry){"while",   (anyfn)lx_while,      false, 1, FALSE, 0, SP_WHILE}; /* until */
 	ptable[15] = (primentry){"set",     (anyfn)lx_set,        false, 1, EVAL, 0, SP_NONE};  /* set */
 	ptable[16] = (primentry){"set",     (anyfn)lx_set,        false, 1, NOEVAL, 0, SP_NONE}; /* setq */
 	ptable[17] = (primentry){"eof",     (anyfn)lx_eof,        true,  0, 0, 0, SP_NONE};

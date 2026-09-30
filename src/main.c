@@ -32,7 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.58"
+#define LISPVER "3.59"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -2242,7 +2242,8 @@ return result;
 
 
 
-#define MAXLOOP 50
+/* MAXLOOP is in listspec.h. compile_loop and compile_while in compex.c */
+/* do as lx_loop and lx_while here: a change here needs the same there */
 int looplevel = 0;
 char loopgo[MAXLOOP];
 
