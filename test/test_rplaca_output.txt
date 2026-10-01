@@ -1,0 +1,39 @@
+ rplaca regression test  
+  ======================  
+  A1 list takes the value   ... PASS  got= ( 5  2  3 ) 
+  A1 variable unchanged   ... PASS  got=  5  
+  A2 function result unchanged   ... PASS  got=  5  
+  A3 list value becomes the element   ... PASS  got= (( p  q ) 2  3 ) 
+  A3 list value unchanged   ... PASS  got= ( p  q ) 
+  B1 head   ... PASS  got= ( 9  2  3 ) 
+  B2 through cdr   ... PASS  got= ( 1  9  3 ) 
+  B3 through cddr   ... PASS  got= ( 1  2  k  4 ) 
+  B4 first element of a sublist   ... PASS  got= (( q  1 )( b  2 )) 
+  B5 list value through cdr   ... PASS  got= ( 1 ( p  q ) 3 ) 
+  B6 shared tail, base   ... PASS  got= ( 1  S  3 ) 
+  B6 shared tail, other   ... PASS  got= ( 0  S  3 ) 
+  C1 empty value   ... PASS  got= (() 2  3 ) 
+  B7 repeated rplaca through cddr, zero mismatches   ... PASS  got=  0  
+  B7 rest of list intact   ... PASS  got= ( 1  2  2999  4  5 ) 
+  
+  results:   15   passed,   0   failed  
+  rplaca regression test  
+  ======================  
+  A1 list takes the value   ... PASS  got= ( 5  2  3 ) 
+  A1 variable unchanged   ... PASS  got=  5  
+  A2 function result unchanged   ... PASS  got=  5  
+  A3 list value becomes the element   ... PASS  got= (( p  q ) 2  3 ) 
+  A3 list value unchanged   ... PASS  got= ( p  q ) 
+  B1 head   ... PASS  got= ( 9  2  3 ) 
+  B2 through cdr   ... PASS  got= ( 1  9  3 ) 
+  B3 through cddr   ... PASS  got= ( 1  2  k  4 ) 
+  B4 first element of a sublist   ... PASS  got= (( q  1 )( b  2 )) 
+  B5 list value through cdr   ... PASS  got= ( 1 ( p  q ) 3 ) 
+  B6 shared tail, base   ... PASS  got= ( 1  S  3 ) 
+  B6 shared tail, other   ... PASS  got= ( 0  S  3 ) 
+  C1 empty value   ... PASS  got= (() 2  3 ) 
+  B7 repeated rplaca through cddr, zero mismatches   ... PASS  got=  0  
+  B7 rest of list intact   ... PASS  got= ( 1  2  2999  4  5 ) 
+  
+  results:   15   passed,   0   failed  
+ 

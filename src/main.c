@@ -32,7 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.61"
+#define LISPVER "3.62"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -1206,7 +1206,7 @@ return a2ptr;
 
 SLC *lx_rplaca(SLC *form)
 {
-SLC *a1ptr,*a2ptr, *newcar, *retval;
+SLC *a1ptr,*a2ptr, *newcar, *rest, *retval;
 
 a1ptr = form->lefptr;
 a2ptr = (a1ptr) ? a1ptr->lefptr :NULL;
@@ -1224,14 +1224,16 @@ if (a1ptr->r.rigptr == NULL) {
 	goto exit;
 }
 mark_req(a2ptr = lx_eval(a2ptr));
-/* the new first element is a copy of the value, a null cell for (): */
-/* the value's own cell may be a variable's value or part of a form, */
-/* so it must not be linked into the list */
-newcar = getfree();
+/* overwrite the first element's own cell with a copy of the value (a null */
+/* cell for ()), keeping its link to the rest of the list. The cell, not the */
+/* list header a1ptr, is what is shared with the list it belongs to: (cdr x) */
+/* and (car x) hand back a fresh header, so repointing the header would not */
+/* change x. The value's own cell may be a variable's value or part of a */
+/* form, so it is copied, never linked into the list */
+newcar = a1ptr->r.rigptr;
+rest = newcar->lefptr;
 copycell (a2ptr, newcar);
-/* and do the dirty work: the rest of the list follows the new element */
-newcar->lefptr = (a1ptr->r.rigptr)->lefptr;
-a1ptr->r.rigptr = newcar;
+newcar->lefptr = rest;
 retval = a1ptr;
 
 exit:

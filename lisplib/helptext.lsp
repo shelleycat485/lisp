@@ -60,7 +60,7 @@
 (put   'remprop 'helptext "(remprop atom propname)" )
 (put   'get 'helptext "(get atom propname) returns property if it exists" )
 (put   'implode 'helptext "opposite of explode" )
-(put   'rplaca 'helptext "(rplaca (a b c) d gives (d b c)) modifies list in memory - side effects" )
+(put   'rplaca 'helptext "(rplaca (a b c) d gives (d b c)) modifies list in memory - side effects. Works on the cell it is given, so (rplaca (cdr x) d) changes x as well" )
 (put   'rplacd 'helptext "rplacd (a b c) (f g) gives (a f g) modifies list in memory - side effects" )
 (put   'writec 'helptext "like princ" )
 (put   'writen 'helptext "like prin" )
