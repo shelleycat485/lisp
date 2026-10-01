@@ -26,6 +26,9 @@ typedef struct listcell {
 	bool    isfptr;
 	bool    gcmark;
 	bool    gcflagged;
+	uint32_t cfidx;  /* on a (lambda ...) list's first cell: its compiled */
+	                 /* code in compex.c's table, 0 if not compiled. Fills */
+	                 /* the padding before lefptr, so the cell stays 24 bytes */
 	struct listcell *lefptr;
 	union {
 		struct listcell *rigptr;
@@ -154,6 +157,14 @@ extern SLC *do_lambda               (SLC *inptr, SLC *form);
 extern int compex_mode;
 extern SLC *compex_lambda_call      (SLC *inptr, SLC *form);
 extern void compex_abort_reset      (void); /* after an abort, main.c */
+extern void compex_gc_roots         (void); /* marks compiled definitions, garbage_coll */
+/* for the check made at each compiled call (cx_def_ok, compex.c): */
+/* compex_defgen counts the sets that gave or took away a function value */
+/* (lx_set, cx_assign); compex_bound[id] is set once atom id has been */
+/* bound as a variable (lambda arguments, let), since a binding can also */
+/* give a name another function */
+extern unsigned long compex_defgen;
+extern unsigned char compex_bound[];
 SLC *report_error (char *function, char *message, SLC *listarg, int showarg);
 extern char outbuf[];
 void condpr(FILE *fptr);
@@ -213,6 +224,7 @@ wkptr->lstat = LSLST;
 wkptr->r.rigptr = NULL;
 wkptr->gcmark = 0;
 wkptr->gcflagged = 0;
+wkptr->cfidx = 0;
 wkptr->lefptr = 0;
 wkptr->isfptr = 0;
 
@@ -222,7 +234,9 @@ return wkptr;
 static inline void copycell (SLC *src,SLC *dest)
 {
 /* copies the contents of the source to the destination  */
-/* the garbage collection bits are not explicitly copied */
+/* the garbage collection bits are not explicitly copied, and the */
+/* copy has no compiled code: that belongs to the source cell */
+dest->cfidx = 0;
 if (src) {
 	dest->lstat = src->lstat;
 	dest->isfptr = src->isfptr;
@@ -234,4 +248,19 @@ if (src) {
 	dest->lefptr = 0;
 }
 } /* end function copycell */
+
+static inline bool islambdalist (SLC *v)
+{
+/* true if v is a (lambda ...) list, a function definition */
+return v != NULL && v->lstat == LSLST && v->r.rigptr != NULL
+	&& v->r.rigptr->lstat == IDATOM && v->r.rigptr->r.idval == LAMID;
+} /* end function islambdalist */
+
+static inline void note_bound (SLC *name)
+{
+/* records that the atom name has been bound as a variable */
+if (name != NULL && name->lstat == IDATOM && name->r.idval >= 0 && name->r.idval < MAXATOMS) {
+	compex_bound[name->r.idval] = 1;
+}
+} /* end function note_bound */
 

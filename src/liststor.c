@@ -170,6 +170,9 @@ for (i=0, current = mlist; i< targele ;i++, current++) {
 		recmark(current);
 	}
 }
+/* and every definition that has compiled code, which points into it */
+/* (also after a total wipe: the code is kept) */
+compex_gc_roots();
 mark_not (oblptr);
 mark_not (binlptr);
 mark_not (prlptr);

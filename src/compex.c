@@ -286,21 +286,34 @@ sprintf(outbuf, "\n"); condpr(stdout);
 /* ---- compiled user functions ---- */
 /* A user function (defun f (args) body...) is compiled once, the first */
 /* time compiled code calls it, and kept: its body goes into a permanent */
-/* executable area and the entry is found by f's atom id. A call to f in */
-/* compiled code calls cx_call, which binds the arguments exactly as */
-/* do_lambda does (lambda_bind, or bind_uneval for (defun f lis ...)), */
-/* runs the compiled body and unbinds. Assumes a compiled function is */
-/* never redefined or edited. */
+/* executable area. The compiled code belongs to the definition, not to */
+/* the name: the first cell of the (lambda ...) list, the lambda atom, */
+/* holds its index in cfuncs (cfidx, 0 if not compiled). A redefinition */
+/* is a new list (defun conses a new lambda cell), so it is compiled */
+/* afresh, and a name that holds another function finds that one's */
+/* code. A call to f in compiled code first checks that f's definition */
+/* is still the one it was compiled for (cx_def_ok); if not, the call is */
+/* interpreted, which finds the current one. Then cx_call binds the */
+/* arguments exactly as do_lambda does (lambda_bind, or bind_uneval for */
+/* (defun f lis ...)), runs the compiled body and unbinds. A definition */
+/* changed in place (rplaca, rplacd on its body) is not noticed. */
 
 typedef struct cfunc {
-	int atomid;            /* the function name's atom id */
-	SLC *lambda;           /* its (lambda (args) body...) definition */
+	int atomid;            /* the name it was first called by, for traces */
+	uint32_t idx;          /* its index in cfuncs, as in defcell->cfidx */
+	SLC *defcell;          /* the lambda cell, first of (lambda (args) body...); */
+	                       /* NULL if there was no room to compile it */
 	byte *code;            /* where its compiled body is, NULL until done */
 	size_t len;            /* length of the compiled body in bytes */
 	struct cfunc *nextpending; /* waiting to be compiled */
 } cfunc;
 
-static cfunc **ctable = NULL;  /* compiled functions, indexed by atom id */
+/* compiled functions, by the index kept in their lambda cell; index 0 */
+/* is not used, so a cfidx of 0 means not compiled. Entries are only */
+/* freed by (compex 4): compiled call sites hold their address */
+#define MAXCFUNCS MAXATOMS
+static cfunc **cfuncs = NULL;
+static uint32_t ncfuncs = 1;   /* next free index */
 static cfunc *pendingfns = NULL; /* registered, body not yet compiled */
 static byte *arena = NULL;     /* executable area for function bodies */
 static size_t arena_used = 0;
@@ -376,13 +389,14 @@ for (; e != NULL; e = e->lefptr) {
 }
 } /* end function collect_let_locals */
 
-/* sets the names bound in the function lam, (lambda (args) body...) */
-static void collect_locals(SLC *lam)
+/* sets the names bound in the function whose lambda cell is defcell, */
+/* (lambda (args) body...) */
+static void collect_locals(SLC *defcell)
 {
 SLC *formals, *f, *body;
 
 nlocals = 0;
-formals = (lam->r.rigptr)->lefptr;
+formals = defcell->lefptr;
 if (formals == NULL) {
 	return;
 }
@@ -398,32 +412,26 @@ for (body = formals->lefptr; body != NULL; body = body->lefptr) {
 }
 } /* end function collect_locals */
 
-/* the table entry for function id, registering it (body not yet */
-/* compiled) if it is new; NULL if the table cannot be made */
+/* the table entry for the definition lam (a (lambda ...) list), called */
+/* by the name id, registering it (body not yet compiled) if it is new; */
+/* NULL if the table is full */
 static cfunc *cfunc_for(int id, SLC *lam)
 {
+SLC *defcell = lam->r.rigptr;
 cfunc *cf;
 
-if (ctable == NULL) {
-	ctable = calloc(MAXATOMS, sizeof *ctable);
-	if (ctable == NULL) {
+if (cfuncs == NULL) {
+	cfuncs = calloc(MAXCFUNCS, sizeof *cfuncs);
+	if (cfuncs == NULL) {
 		puts("Fatal: compex: No compiled function table allocate");
 		exit(8);
 	}
 }
-if (id < 0 || id >= MAXATOMS) {
-	return NULL;
+if (defcell->cfidx != 0) {
+	return cfuncs[defcell->cfidx]; /* compiled (or registered) already */
 }
-if (ctable[id] != NULL) {
-	/* compiled (or registered) already, but only for the definition it was */
-	/* made from. The name can hold another definition by now: a variable */
-	/* holding a function, (test a b), has the function it was given at */
-	/* each call. Then there is no compiled body to give, and the caller */
-	/* interprets the call. */
-	if (ctable[id]->lambda == NULL || ctable[id]->lambda->r.rigptr != lam->r.rigptr) {
-		return NULL;
-	}
-	return ctable[id];
+if (ncfuncs >= MAXCFUNCS) {
+	return NULL;
 }
 cf = calloc(1, sizeof *cf);
 if (cf == NULL) {
@@ -431,12 +439,78 @@ if (cf == NULL) {
 	exit(8);
 }
 cf->atomid = id;
-cf->lambda = lam;
+cf->idx = ncfuncs++;
+cf->defcell = defcell;
 cf->nextpending = pendingfns;
 pendingfns = cf;
-ctable[id] = cf;
+cfuncs[cf->idx] = cf;
+defcell->cfidx = cf->idx;
 return cf;
 } /* end function cfunc_for */
+
+/* a compiled call (f args...): f, the function it was compiled to call, */
+/* and the value of compex_defgen when f was last found to be still */
+/* defined as that function. One is made for each call compiled; all are */
+/* freed by (compex 4), or, for (compex form)'s code, by the next one */
+typedef struct callsite {
+	SLC *head;             /* f, the atom in the call */
+	cfunc *cf;
+	unsigned long gen;     /* 0: not checked yet */
+	struct callsite *next;
+} callsite;
+
+static callsite *callsites = NULL;   /* in function bodies, kept */
+static callsite *formsites = NULL;   /* in (compex form)'s code */
+static bool compiling_form = false;  /* compiling (compex form)'s code */
+
+static callsite *new_callsite(SLC *head, cfunc *cf)
+{
+callsite *s = calloc(1, sizeof *s);
+
+if (s == NULL) {
+	puts("Fatal: compex: No compiled call allocate");
+	exit(8);
+}
+s->head = head;
+s->cf = cf;
+if (compiling_form) {
+	s->next = formsites;
+	formsites = s;
+} else {
+	s->next = callsites;
+	callsites = s;
+}
+return s;
+} /* end function new_callsite */
+
+static void free_callsites(callsite **list)
+{
+callsite *s;
+
+while ((s = *list) != NULL) {
+	*list = s->next;
+	free(s);
+}
+} /* end function free_callsites */
+
+/* called from compiled code before a call of f: true if f is still */
+/* defined as the function the call was compiled for, and it has code. */
+/* The full lookup is only made when a function value has been set */
+/* since the last check, or f has been bound as a variable */
+static int cx_def_ok(callsite *s)
+{
+SLC *lam;
+
+if (s->gen == compex_defgen && !compex_bound[s->head->r.idval]) {
+	return 1;
+}
+lam = lambda_of(s->head);
+if (lam != NULL && lam->r.rigptr == s->cf->defcell && s->cf->code != NULL) {
+	s->gen = compex_defgen;
+	return 1;
+}
+return 0;
+} /* end function cx_def_ok */
 
 /* called from compiled code for (f args...): inptr is the call, cf is f */
 /* binds as do_lambda (main.c) does, runs f's compiled body, unbinds */
@@ -450,7 +524,7 @@ mark_req(actualargs = getfree());
 /* actual args follow the function name in the call */
 copycell(inptr->r.rigptr->lefptr, actualargs);
 /* formal args follow the lambda keyword */
-copycell((cf->lambda->r.rigptr)->lefptr, formalargs = getfree());
+copycell(cf->defcell->lefptr, formalargs = getfree());
 mark_req(formalargs);
 formalargs->lefptr = 0;
 
@@ -553,6 +627,7 @@ if (pending) {
 	pendlast->lefptr = binlptr;
 	binlptr = pending;
 	for (tf = pending; tf != pendlast->lefptr; tf = tf->lefptr) {
+		note_bound(tf->r.rigptr); /* for cx_def_ok */
 		mark_not(tf->r.rigptr->lefptr); /* the value, may be NULL */
 		mark_not(tf->r.rigptr);
 		mark_not(tf);
@@ -575,7 +650,7 @@ return res;
 /* at least that many args, else -1 (then cx_call and lambda_bind do it) */
 static int compiled_arg_count(SLC *call, cfunc *cf)
 {
-SLC *formals = (cf->lambda->r.rigptr)->lefptr; /* the (a b ...) cell */
+SLC *formals = cf->defcell->lefptr; /* the (a b ...) cell */
 SLC *f, *a;
 int n = 0;
 
@@ -670,6 +745,9 @@ if (entry == NULL) {
 	oblptr = entry;
 	entry->r.rigptr = namecell;
 	oblcache_invalidate(); /* its cached "not in the oblist" is now wrong */
+}
+if (islambdalist(entry->r.rigptr->lefptr) || islambdalist(value)) {
+	compex_defgen++; /* a function given or taken away, as lx_set */
 }
 /* only do pointing if not null definition */
 entry->r.rigptr->lefptr = isnullcell(value) ? NULL : value;
@@ -1315,40 +1393,58 @@ if (x->lstat == LSLST && x->r.rigptr != NULL) {
 	}
 }
 /* a call of a function defined by defun (including a redefined */
-/* primitive name): call its compiled body, compiling it if new */
+/* primitive name): call its compiled body, compiling it if new. */
+/* When it runs, the name is first checked to be still defined as this */
+/* function (before any argument is worked out, as the interpreter */
+/* looks the definition up first); if not, the call is interpreted */
 if (x->lstat == LSLST && x->r.rigptr != NULL && x->r.rigptr->lstat == IDATOM
     && !is_local(x->r.rigptr)) {
-	SLC *lam = lambda_of(x->r.rigptr);
+	SLC *fname = x->r.rigptr;
+	SLC *lam = lambda_of(fname);
 	cfunc *cf;
 
-	if (lam != NULL && (cf = cfunc_for(x->r.rigptr->r.idval, lam)) != NULL) {
+	if (lam != NULL && (cf = cfunc_for(fname->r.idval, lam)) != NULL) {
 		int nargs = compiled_arg_count(x, cf);
+		byte *slowjump, *endjump;
 
+		emit_const_arg((uintptr_t)new_callsite(fname, cf));
+		emit_call((uintptr_t)cx_def_ok);
+		slowjump = emit_jump_if_int_false();
 		if (nargs < 0) {
 			/* args bound by lambda_bind / bind_uneval, as the interpreter */
-			snprintf(what, sizeof what, "call compiled %s:", getident(cf->atomid));
+			snprintf(what, sizeof what, "call compiled %s:", getident(fname->r.idval));
 			trace_step(depth, what, x);
 			emit_const_arg((uintptr_t)x);
 			emit_const_arg2((uintptr_t)cf);
 			emit_call((uintptr_t)cx_call);
-			return;
-		}
-		/* args compiled: each value bound pending, then the call */
-		SLC *formal = (lam->r.rigptr)->lefptr->r.rigptr;
-		SLC *arg = x->r.rigptr->lefptr;
-		int i;
+		} else {
+			/* args compiled: each value bound pending, then the call */
+			SLC *formal = (lam->r.rigptr)->lefptr->r.rigptr;
+			SLC *arg = x->r.rigptr->lefptr;
+			int i;
 
-		snprintf(what, sizeof what, "call compiled %s, args compiled:", getident(cf->atomid));
-		trace_step(depth, what, x);
-		emit_call((uintptr_t)cx_frame_begin);
-		for (i = 0; i < nargs; i++, arg = arg->lefptr, formal = formal->lefptr) {
-			compile(arg, tab, depth + 1);
-			emit_result_to_arg();
-			emit_const_arg2((uintptr_t)formal);
-			emit_call((uintptr_t)cx_frame_arg);
+			snprintf(what, sizeof what, "call compiled %s, args compiled:", getident(fname->r.idval));
+			trace_step(depth, what, x);
+			emit_call((uintptr_t)cx_frame_begin);
+			for (i = 0; i < nargs; i++, arg = arg->lefptr, formal = formal->lefptr) {
+				compile(arg, tab, depth + 1);
+				emit_result_to_arg();
+				emit_const_arg2((uintptr_t)formal);
+				emit_call((uintptr_t)cx_frame_arg);
+			}
+			emit_const_arg((uintptr_t)cf);
+			emit_call((uintptr_t)cx_frame_call);
 		}
-		emit_const_arg((uintptr_t)cf);
-		emit_call((uintptr_t)cx_frame_call);
+		endjump = emit_jump();
+		/* redefined since: interpret the call */
+		if (emit_ok) {
+			patch_jump(slowjump, emit_p);
+		}
+		emit_const_arg((uintptr_t)x);
+		emit_call((uintptr_t)lx_eval);
+		if (emit_ok) {
+			patch_jump(endjump, emit_p);
+		}
 		return;
 	}
 }
@@ -1401,9 +1497,9 @@ while ((cf = pendingfns) != NULL) {
 	snprintf(what, sizeof what, "compiling function %s:", getident(cf->atomid));
 	trace_step(1, what, NULL);
 	emit_prologue();
-	collect_locals(cf->lambda);
+	collect_locals(cf->defcell);
 	/* (lambda args form1 form2...): the value is that of the last form */
-	bodyform = (cf->lambda->r.rigptr)->lefptr->lefptr;
+	bodyform = cf->defcell->lefptr->lefptr;
 	if (bodyform == NULL) {
 		compile(NULL, tab, 2);
 	}
@@ -1413,13 +1509,17 @@ while ((cf = pendingfns) != NULL) {
 	emit_epilogue();
 	nlocals = 0;
 	if (!emit_ok) {
-		/* arena full: forget this and all waiting functions */
-		ctable[cf->atomid] = NULL;
-		free(cf);
+		/* arena full: forget this and all waiting functions. The entries */
+		/* stay (bodies compiled before may call them; cx_def_ok then */
+		/* sends those calls to the interpreter), but their lambda cells */
+		/* no longer refer to them, nor they to the cells */
+		cf->defcell->cfidx = 0;
+		cf->defcell = NULL;
 		while ((cf = pendingfns) != NULL) {
 			pendingfns = cf->nextpending;
-			ctable[cf->atomid] = NULL;
-			free(cf);
+			cf->nextpending = NULL;
+			cf->defcell->cfidx = 0;
+			cf->defcell = NULL;
 		}
 		return false;
 	}
@@ -1542,6 +1642,8 @@ goodtable = true;
 /* mode: it clears all compiled code and resets the compiler's flags, */
 /* see compex_clear */
 int compex_mode = 0;
+unsigned long compex_defgen = 1;     /* see listspec.h; call sites start at 0 */
+unsigned char compex_bound[MAXATOMS];
 static bool comparing = false; /* mode 2 is running a function both ways */
 static int cx_active = 0;      /* compiled code entered from the interpreter */
                                /* and not yet returned (compex_lambda_call) */
@@ -1550,23 +1652,31 @@ static bool compex_code_running = false; /* (compex form) compiled code is runni
 /* (compex 4): forgets every compiled function body and resets the */
 /* compiler's state, so each defun'd function is compiled again from its */
 /* current definition the next time it is called. The mode is unchanged. */
-/* The function table entries are freed and the arena is reused from the */
-/* start (it stays mapped); the stacks of compiled arithmetic, calls, eq */
-/* and set are emptied. Only called when no compiled code is running */
+/* The function table entries are freed, their lambda cells marked not */
+/* compiled (so superseded definitions can be garbage collected again) */
+/* and the arena is reused from the start (it stays mapped); the stacks */
+/* of compiled arithmetic, calls, eq and set are emptied. Only called */
+/* when no compiled code is running */
 static void compex_clear(void)
 {
 #if CODE_SUPPORTED
-int i;
+uint32_t i;
 
-if (ctable != NULL) {
-	for (i = 0; i < MAXATOMS; i++) {
-		if (ctable[i] != NULL) {
-			free(ctable[i]); /* registered ones waiting on pendingfns too */
-			ctable[i] = NULL;
+if (cfuncs != NULL) {
+	for (i = 1; i < ncfuncs; i++) {
+		if (cfuncs[i] != NULL) {
+			if (cfuncs[i]->defcell != NULL) {
+				cfuncs[i]->defcell->cfidx = 0;
+			}
+			free(cfuncs[i]); /* registered ones waiting on pendingfns too */
+			cfuncs[i] = NULL;
 		}
 	}
 }
+ncfuncs = 1;
 pendingfns = NULL;
+free_callsites(&callsites);
+free_callsites(&formsites);
 arena_used = 0;
 arith_depth = 0;
 frame_depth = 0;
@@ -1578,6 +1688,25 @@ comparing = false;
 cx_active = 0;
 compex_code_running = false;
 } /* end function compex_clear */
+
+/* called by garbage_coll (liststor.c) while marking: every definition */
+/* that has compiled code is kept, since the code points into its cells */
+/* and may be running, even when its name has been given another one */
+void compex_gc_roots(void)
+{
+#if CODE_SUPPORTED
+uint32_t i;
+
+if (cfuncs == NULL) {
+	return;
+}
+for (i = 1; i < ncfuncs; i++) {
+	if (cfuncs[i] != NULL && cfuncs[i]->defcell != NULL && !cfuncs[i]->defcell->gcmark) {
+		recmark(cfuncs[i]->defcell);
+	}
+}
+#endif
+} /* end function compex_gc_roots */
 
 /* called from main.c after an abort (longjmp to main_env): any compiled */
 /* code that was running has been abandoned, so its flags and the depths */
@@ -1791,9 +1920,12 @@ SLC *(*codefn)(void);
 emit_p = memptr;
 emit_end = memptr + CODEMEM_SIZE;
 emit_ok = true;
+free_callsites(&formsites); /* the last (compex form)'s, its code is replaced */
+compiling_form = true;
 emit_prologue();
 compile(x, ptable, 1);
 emit_epilogue();
+compiling_form = false;
 if (!emit_ok) {
 	return report_error("compex", "form too big for the code area", x, TRUE);
 }

@@ -32,7 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.65"
+#define LISPVER "3.66"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -673,6 +673,7 @@ SLC *nextf, *tf, *temp;
 	mark_req(tf = getfree());
         copycell (formalargs, nextf);
 	nextf->lefptr = NULL;
+	note_bound(nextf); /* for compiled calls, see listspec.h */
 	/* put the new element at top of binding list */
 	tf->lefptr = binlptr;
 	binlptr = tf;
@@ -753,6 +754,7 @@ if (pending) {
 	pendlast->lefptr = binlptr;
 	binlptr = pending;
 	for (tf = pending; tf != pendlast->lefptr; tf = tf->lefptr) {
+		note_bound(tf->r.rigptr); /* for compiled calls, see listspec.h */
 		mark_not(tf->r.rigptr->lefptr);	/* the value, may be NULL */
 		mark_not(tf->r.rigptr);
 		mark_not(tf);
@@ -2240,7 +2242,10 @@ if (newptr == NULL) {
 	newptr->r.rigptr = a1ptr;
 	oblcache_invalidate(); /* its cached "not in the oblist" is now wrong */
 } 
-tptr = newptr->r.rigptr; 
+tptr = newptr->r.rigptr;
+if (islambdalist(tptr->lefptr) || islambdalist(a2ptr)) {
+	compex_defgen++; /* a function given or taken away: compiled calls recheck */
+}
 if (isnullcell(a2ptr)==FALSE) {
 	/* only do pointing if not null definition */
 	tptr->lefptr = a2ptr;
