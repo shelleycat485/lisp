@@ -32,7 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.63"
+#define LISPVER "3.64"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -175,6 +175,7 @@ if (jmpvalue != 0) {
 	/* evaluation and clear cells left gcflagged (e.g. pending let or */
 	/* lambda bindings) before the files are read again */
 	garbage_coll(TRUE);
+	compex_abort_reset(); /* compiled code that was running is abandoned */
 }
 
 if (++fileguard > 10)
@@ -221,6 +222,7 @@ if (jmpvalue != 0) {
 	sprintf(outbuf, "Break In\n");
 	condpr (stdout);
 	garbage_coll(TRUE);
+	compex_abort_reset(); /* compiled code that was running is abandoned */
 } 
  /* now input from console */
 while (!feof(inStream)) {

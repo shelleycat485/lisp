@@ -85,7 +85,10 @@
 (put   'let 'helptext "(let ((a 1) (b 2)) forms) local variables, all vals evaluated before any is bound" )
 (put   'let* 'helptext "(let* ((a 1) (b a)) forms) like let, but each val can use the vars before it" )
 (put   'compex 'helptext "(compex N) mode: 0 interpret (default), 1 defun'd functions run compiled,
-2 both, warns if results differ. Returns (bytes-used store-size).
-(compex form) compiles form. No redefinition after compiling; aarch64, x86_64." )
+2 both, warns if results differ. (compex 4) clears all compiled code and resets the compiler,
+keeping the mode, so functions are compiled again from their current definitions (not
+allowed inside a compiled function or in the arguments of a call of one). Returns (bytes-used store-size).
+(compex form) compiles form. A function redefined after it was compiled may still run its
+old body from compiled callers until (compex 4); aarch64, x86_64." )
 (put   'defined 'helptext "(defined x) true if the atom x is already defined (has a value or is a Subr), else null. An atom x is not evaluated so it can be undefined. A list such as (defined 'x) is evaluated first and the atom it gives is tested" )
 

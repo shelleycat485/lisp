@@ -1538,9 +1538,62 @@ goodtable = true;
 /* defun'd functions run their compiled bodies (compiled on first use), */
 /* (compex 2) both run and a warning is printed if the results differ. */
 /* The interpreter calls compex_lambda_call (from lx_eval_internal) for */
-/* a lambda call whenever compex_mode is not 0 */
+/* a lambda call whenever compex_mode is not 0. (compex 4) is not a */
+/* mode: it clears all compiled code and resets the compiler's flags, */
+/* see compex_clear */
 int compex_mode = 0;
 static bool comparing = false; /* mode 2 is running a function both ways */
+static int cx_active = 0;      /* compiled code entered from the interpreter */
+                               /* and not yet returned (compex_lambda_call) */
+static bool compex_code_running = false; /* (compex form) compiled code is running */
+
+/* (compex 4): forgets every compiled function body and resets the */
+/* compiler's state, so each defun'd function is compiled again from its */
+/* current definition the next time it is called. The mode is unchanged. */
+/* The function table entries are freed and the arena is reused from the */
+/* start (it stays mapped); the stacks of compiled arithmetic, calls, eq */
+/* and set are emptied. Only called when no compiled code is running */
+static void compex_clear(void)
+{
+#if CODE_SUPPORTED
+int i;
+
+if (ctable != NULL) {
+	for (i = 0; i < MAXATOMS; i++) {
+		if (ctable[i] != NULL) {
+			free(ctable[i]); /* registered ones waiting on pendingfns too */
+			ctable[i] = NULL;
+		}
+	}
+}
+pendingfns = NULL;
+arena_used = 0;
+arith_depth = 0;
+frame_depth = 0;
+eq_depth = 0;
+set_depth = 0;
+nlocals = 0;
+#endif
+comparing = false;
+cx_active = 0;
+compex_code_running = false;
+} /* end function compex_clear */
+
+/* called from main.c after an abort (longjmp to main_env): any compiled */
+/* code that was running has been abandoned, so its flags and the depths */
+/* of its stacks are stale. Clears them; the compiled bodies are kept */
+void compex_abort_reset(void)
+{
+#if CODE_SUPPORTED
+arith_depth = 0;
+frame_depth = 0;
+eq_depth = 0;
+set_depth = 0;
+#endif
+comparing = false;
+cx_active = 0;
+compex_code_running = false;
+} /* end function compex_abort_reset */
 
 #if CODE_SUPPORTED
 /* structural equality of two values, as equal in init.lsp */
@@ -1618,16 +1671,22 @@ if (cf->code == NULL) {
 	}
 }
 if (compex_mode == 1) {
-	return cx_call(inptr, cf);
+	cx_active++; /* (compex 4) must not free the code while it runs */
+	rc = cx_call(inptr, cf);
+	cx_active--;
+	return rc;
 }
 /* mode 2: both, nested calls meanwhile only interpreted (else each */
-/* level would run both again, exponentially) */
+/* level would run both again, exponentially). cf must survive the */
+/* interpreted run too, so (compex 4) is refused from here to the end */
+cx_active++;
 comparing = true;
 ri = do_lambda(inptr, form);
 mark_req(ri);
 rc = cx_call(inptr, cf);
 mark_not(ri);
 comparing = false;
+cx_active--;
 if (!cx_equal(ri, rc)) {
 	sprintf(outbuf, "compex: %s: interpreted ", getident(id)); condpr(stdout);
 	print_value(ri);
@@ -1669,13 +1728,14 @@ return res;
 SLC *lx_compex(SLC *form)
 {
 /* (compex N), N 0, 1 or 2: sets the mode (see compex_lambda_call); */
-/* (compex): leaves it. Both return (bytes-used store-size). */
+/* (compex 4): clears all compiled code and resets the compiler's */
+/* flags, leaving the mode (see compex_clear); refused while compiled */
+/* code is running; (compex): leaves it. All return (bytes-used store-size). */
 /* (compex form), any other argument: compiles the form to machine */
 /* code, runs that and returns its result. If LISPCSPRINT is set, it */
 /* first evaluates the form with the interpreter too and prints both */
 /* results and the compile trace; if not, only the compiled code runs */
 static byte *memptr = NULL;        /* executable area, allocated once */
-static bool running = false;       /* compiled code is running */
 SLC *x, *retval;
 
 x = form->lefptr;
@@ -1687,10 +1747,19 @@ if (x->lstat == NUMATOM && x->isfptr == 0) {
 		compex_mode = (int)x->r.rigval;
 		return compex_status();
 	}
-	return report_error("compex", "mode must be 0, 1 or 2", x, TRUE);
+	if (x->r.rigval == 4) {
+		if (cx_active > 0 || compex_code_running) {
+			/* called from inside compiled code: freeing it now would */
+			/* free the code that has to be returned to */
+			return report_error("compex", "cannot clear compiled code while it is running", x, TRUE);
+		}
+		compex_clear();
+		return compex_status();
+	}
+	return report_error("compex", "mode must be 0, 1 or 2, or 4 to clear", x, TRUE);
 }
 
-if (running) {
+if (compex_code_running) {
 	/* compex called from inside compiled code: compiling now would */
 	/* overwrite the code that is running, so just interpret */
 	return lx_eval(x);
@@ -1738,9 +1807,9 @@ arith_depth = 0; /* in case an abort left compiled arithmetic unfinished */
 frame_depth = 0; /* or a compiled call half set up */
 eq_depth = 0;    /* or an eq */
 set_depth = 0;   /* or a set */
-running = true;
+compex_code_running = true;
 retval = codefn(); /* run the compiled code */
-running = false;
+compex_code_running = false;
 if (cx_print) {
 	sprintf(outbuf, "compiled:    "); condpr(stdout);
 	lx_prin(stdout, retval, SPACE, NOESC);

@@ -271,5 +271,6 @@
 
 ; run defun'd functions compiled from here on (compiled on first call).
 ; (compex 0) goes back to the interpreter, (compex 2) runs both and
-; warns if they differ; see compex in helptext.lsp
+; warns if they differ, (compex 4) clears all compiled code (functions
+; are compiled again when next called); see compex in helptext.lsp
 (compex 1)

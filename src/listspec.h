@@ -150,9 +150,10 @@ extern SLC *lx_defined              (SLC *);
 extern int bind_uneval              (SLC *formalargs, SLC *actualargs);
 extern int lambda_bind              (SLC *formalargs, SLC *actualargs);
 extern SLC *do_lambda               (SLC *inptr, SLC *form);
-/* compex modes, compex.c: 0 interpret, 1 compiled, 2 both */
+/* compex modes, compex.c: 0 interpret, 1 compiled, 2 both; (compex 4) clears */
 extern int compex_mode;
 extern SLC *compex_lambda_call      (SLC *inptr, SLC *form);
+extern void compex_abort_reset      (void); /* after an abort, main.c */
 SLC *report_error (char *function, char *message, SLC *listarg, int showarg);
 extern char outbuf[];
 void condpr(FILE *fptr);
