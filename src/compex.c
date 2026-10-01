@@ -321,6 +321,83 @@ if (def != NULL && def->lstat == LSLST && def->r.rigptr != NULL
 return NULL;
 } /* end function lambda_of */
 
+/* names bound inside the function being compiled: its parameters and the */
+/* variables of any let or let*. A call whose head is one of these calls */
+/* whatever the variable holds when it runs, which can differ from call to */
+/* call and from a global function of the same name (the body is compiled */
+/* before its arguments are bound, so the oblist would show the global one). */
+/* Such a call is left to the interpreter, not compiled as a call of the */
+/* global function. */
+#define MAXLOCALS 64
+static int localids[MAXLOCALS];
+static int nlocals = 0;
+
+static void add_local(SLC *atom)
+{
+if (atom != NULL && atom->lstat == IDATOM && nlocals < MAXLOCALS) {
+	localids[nlocals++] = atom->r.idval;
+}
+} /* end function add_local */
+
+static bool is_local(SLC *atom)
+{
+int i;
+
+for (i = 0; i < nlocals; i++) {
+	if (localids[i] == atom->r.idval) {
+		return true;
+	}
+}
+return false;
+} /* end function is_local */
+
+/* adds the variables of every let and let* in the form x */
+static void collect_let_locals(SLC *x)
+{
+SLC *e, *b;
+
+if (x == NULL || x->lstat != LSLST || x->r.rigptr == NULL) {
+	return;
+}
+e = x->r.rigptr;
+if (e->lstat == IDATOM
+    && (strcmp(getident(e->r.idval), "let") == 0 || strcmp(getident(e->r.idval), "let*") == 0)
+    && e->lefptr != NULL && e->lefptr->lstat == LSLST) {
+	for (b = e->lefptr->r.rigptr; b != NULL; b = b->lefptr) {
+		if (b->lstat == IDATOM) {
+			add_local(b);
+		} else if (b->lstat == LSLST && b->r.rigptr != NULL) {
+			add_local(b->r.rigptr);
+		}
+	}
+}
+for (; e != NULL; e = e->lefptr) {
+	collect_let_locals(e);
+}
+} /* end function collect_let_locals */
+
+/* sets the names bound in the function lam, (lambda (args) body...) */
+static void collect_locals(SLC *lam)
+{
+SLC *formals, *f, *body;
+
+nlocals = 0;
+formals = (lam->r.rigptr)->lefptr;
+if (formals == NULL) {
+	return;
+}
+if (formals->lstat == IDATOM) {
+	add_local(formals); /* (defun f lis ...): one name for all the args */
+} else if (formals->lstat == LSLST) {
+	for (f = formals->r.rigptr; f != NULL; f = f->lefptr) {
+		add_local(f);
+	}
+}
+for (body = formals->lefptr; body != NULL; body = body->lefptr) {
+	collect_let_locals(body);
+}
+} /* end function collect_locals */
+
 /* the table entry for function id, registering it (body not yet */
 /* compiled) if it is new; NULL if the table cannot be made */
 static cfunc *cfunc_for(int id, SLC *lam)
@@ -338,7 +415,15 @@ if (id < 0 || id >= MAXATOMS) {
 	return NULL;
 }
 if (ctable[id] != NULL) {
-	return ctable[id]; /* compiled (or registered) already */
+	/* compiled (or registered) already, but only for the definition it was */
+	/* made from. The name can hold another definition by now: a variable */
+	/* holding a function, (test a b), has the function it was given at */
+	/* each call. Then there is no compiled body to give, and the caller */
+	/* interprets the call. */
+	if (ctable[id]->lambda == NULL || ctable[id]->lambda->r.rigptr != lam->r.rigptr) {
+		return NULL;
+	}
+	return ctable[id];
 }
 cf = calloc(1, sizeof *cf);
 if (cf == NULL) {
@@ -1231,7 +1316,8 @@ if (x->lstat == LSLST && x->r.rigptr != NULL) {
 }
 /* a call of a function defined by defun (including a redefined */
 /* primitive name): call its compiled body, compiling it if new */
-if (x->lstat == LSLST && x->r.rigptr != NULL && x->r.rigptr->lstat == IDATOM) {
+if (x->lstat == LSLST && x->r.rigptr != NULL && x->r.rigptr->lstat == IDATOM
+    && !is_local(x->r.rigptr)) {
 	SLC *lam = lambda_of(x->r.rigptr);
 	cfunc *cf;
 
@@ -1315,6 +1401,7 @@ while ((cf = pendingfns) != NULL) {
 	snprintf(what, sizeof what, "compiling function %s:", getident(cf->atomid));
 	trace_step(1, what, NULL);
 	emit_prologue();
+	collect_locals(cf->lambda);
 	/* (lambda args form1 form2...): the value is that of the last form */
 	bodyform = (cf->lambda->r.rigptr)->lefptr->lefptr;
 	if (bodyform == NULL) {
@@ -1324,6 +1411,7 @@ while ((cf = pendingfns) != NULL) {
 		compile(bodyform, tab, 2);
 	}
 	emit_epilogue();
+	nlocals = 0;
 	if (!emit_ok) {
 		/* arena full: forget this and all waiting functions */
 		ctable[cf->atomid] = NULL;
