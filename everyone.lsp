@@ -27,11 +27,9 @@
 ; uses subtraction-based remainder test rather than divide, to avoid
 ; float-precision issues (as a.lsp's mod function also does)
 ;
-; note: init.lsp's "lesserp" is actually <=  ((not (greaterp n1 n2))),
-; not strict <. Using it as a stopping condition below would halt one
-; subtraction too early and leave a nonzero remainder even on exact
-; multiples, so a strict less-than is built from "greaterp" instead
-; (greaterp IS strict, since it is built on minusp which is "< 0").
+; note: the stopping conditions below are written with "greaterp"
+; (strict, built on minusp which is "< 0"). init.lsp's "lesserp" is
+; strict too, (greaterp n2 n1), so either could be used.
 
 (defun divisiblep (a b)
   (let ( (r a) )

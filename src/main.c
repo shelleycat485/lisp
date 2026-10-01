@@ -32,7 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.64"
+#define LISPVER "3.65"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -2330,12 +2330,13 @@ SLC *res;
 /* evaluates the form supplied */
 /* if result same as test, sets the loopgo to stop the current loop level */
 /* and evaluates the rest of the expressions in the while or until list */
+/* a missing test counts as (), so (while) stops the loop, (until) does not */
 
 res = lx_eval(form->lefptr);
 if (isnullcell(res) == test) {
 	loopgo[looplevel] = FALSE;
 	form = form->lefptr;
-	while (form->lefptr) {
+	while (form && form->lefptr) { /* form is NULL for (while) */
 		res = lx_eval(form->lefptr);
 		form = form->lefptr;
 	} /* end rest of expressions */

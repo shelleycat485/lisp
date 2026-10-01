@@ -1,0 +1,19 @@
+ addtoalist regression test  
+  ==========================  
+ ( mode 1:  A short list, addtoalist )  ... PASS  
+ ( mode 1:  B short list, addtoalist2 = addtoalist )  ... PASS  
+ ( mode 1:  B short list, addtoalist3 = addtoalist )  ... PASS  
+ ( mode 1:  C 3000 list, length )  ... PASS  
+ ( mode 1:  C 3000 list, front entries )  ... PASS  
+ ( mode 1:  C 3000 list, addtoalist2 = addtoalist )  ... PASS  
+ ( mode 1:  C 3000 list, addtoalist3 = addtoalist )  ... PASS  
+ ( mode 0:  A short list, addtoalist )  ... PASS  
+ ( mode 0:  B short list, addtoalist2 = addtoalist )  ... PASS  
+ ( mode 0:  B short list, addtoalist3 = addtoalist )  ... PASS  
+ ( mode 0:  C 3000 list, length )  ... PASS  
+ ( mode 0:  C 3000 list, front entries )  ... PASS  
+ ( mode 0:  C 3000 list, addtoalist2 = addtoalist )  ... PASS  
+ ( mode 0:  C 3000 list, addtoalist3 = addtoalist )  ... PASS  
+  
+  results:   14   passed,   0   failed  
+ 
