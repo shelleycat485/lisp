@@ -94,7 +94,7 @@ extern int lex_sexp(FILE * infile, SLC **retval);
 
 
 extern jmp_buf  main_env;
-extern int  trace,looplevel, garb_announce;
+extern int  trace,looplevel, garb_announce, syslogyes;
 /* loops, main.c: loopgo[looplevel] is cleared by while / until to stop */
 /* the current loop; the compiled loop in compex.c uses them too */
 #define MAXLOOP 50
@@ -122,6 +122,12 @@ extern SLC *lx_loop                 (SLC *);
 extern SLC *lx_while                (SLC *, int );
 extern SLC *lx_null                 (SLC *);
 extern SLC *lx_set                  (SLC *, int );
+/* internal_set's binding method: SET_GLOBAL as set and setq (changes a */
+/* binding or global the name already has, else adds it to the oblist), */
+/* SET_BIND as let and let* (always a new binding on the binding list) */
+#define SET_GLOBAL 0
+#define SET_BIND   1
+extern void internal_set            (SLC *, SLC *, int );
 extern SLC *lx_let                  (SLC *);
 extern SLC *lx_letstar              (SLC *);
 extern SLC *lx_compex               (SLC *); /* for testing compilations */

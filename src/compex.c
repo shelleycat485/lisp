@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <syslog.h>
 #include "listspec.h"
 #include "turtinf.h"
 
@@ -60,6 +61,7 @@ enum {
 	SP_LOOP,      /* loop: terms compiled, with a jump back to the first */
 	SP_WHILE,     /* while, until: test and the forms after it compiled */
 	SP_SET,       /* set, setq: arguments compiled, then cx_set_* / cx_setq */
+	SP_LET,       /* let, let*: values and forms compiled, cx_let_* bind */
 	SP_FALLBACK   /* not compiled: lx_eval(whole form) */
 };
 typedef struct {
@@ -412,6 +414,40 @@ for (body = formals->lefptr; body != NULL; body = body->lefptr) {
 }
 } /* end function collect_locals */
 
+/* the start of a form for the log: an atom's name or number, or for */
+/* a list "(" and the start of its first element */
+static void form_start(SLC *x, char *buf, size_t n)
+{
+size_t k = 0;
+
+while (x != NULL && x->lstat == LSLST && k + 2 < n) {
+	buf[k++] = '(';
+	x = x->r.rigptr;
+}
+buf[k] = '\0';
+if (x == NULL) {
+	snprintf(buf + k, n - k, "()");
+} else if (x->lstat == IDATOM) {
+	snprintf(buf + k, n - k, "%s", getident(x->r.idval));
+} else if (x->isfptr) {
+	snprintf(buf + k, n - k, "<file>");
+} else {
+	snprintf(buf + k, n - k, "%g", (double)x->r.rigval);
+}
+} /* end function form_start */
+
+/* LISPSYSLOG set: logs a compiler hit or miss, what, for the form x */
+static void cx_log(const char *what, SLC *x)
+{
+char buf[80];
+
+if (!syslogyes) {
+	return;
+}
+form_start(x, buf, sizeof buf);
+syslog(LOG_MAKEPRI(LOG_LOCAL1, LOG_NOTICE), "compex %s %s", what, buf);
+} /* end function cx_log */
+
 /* the table entry for the definition lam (a (lambda ...) list), called */
 /* by the name id, registering it (body not yet compiled) if it is new; */
 /* NULL if the table is full */
@@ -509,6 +545,7 @@ if (lam != NULL && lam->r.rigptr == s->cf->defcell && s->cf->code != NULL) {
 	s->gen = compex_defgen;
 	return 1;
 }
+cx_log("miss stale call (interpreted)", s->head);
 return 0;
 } /* end function cx_def_ok */
 
@@ -708,9 +745,10 @@ return NULL; /* not equal */
 
 
 /* ---- compiled set and setq ---- */
-/* As lx_set (main.c): the value is worked out, then the name is looked */
-/* up (a set within a binding changes the binding) and, if it is new, */
-/* added to the oblist. setq's name is known when compiling. set's is */
+/* As lx_set (main.c): the value is worked out, then internal_set */
+/* (main.c, SET_GLOBAL) looks the name up (a set within a binding */
+/* changes the binding) and, if it is new, adds it to the oblist. */
+/* setq's name is known when compiling. set's is */
 /* the value of its first argument, kept gcflagged on a stack (one per */
 /* set being worked out) while the second is worked out, as eq does. */
 /* Unlike lx_set, a value's gcflag is left as it was found */
@@ -719,44 +757,11 @@ return NULL; /* not equal */
 static SLC *set_first[MAXSET];
 static int  set_depth = 0;
 
-/* gives name the value; a name not in the oblist is added to it, its */
-/* name cell a copy of name, as lx_set makes (name's own cell is part */
-/* of a form, or may be a variable's value) */
-static void cx_assign(SLC *name, SLC *value)
-{
-SLC *entry = sear_oblist(name);
-SLC *namecell;
-
-if (entry == NULL) {
-	bool wasflagged = (value != NULL && value->gcflagged);
-
-	mark_req(value); /* getfree can run a garbage collection */
-	namecell = getfree();
-	copycell(name, namecell);
-	namecell->lefptr = NULL;
-	mark_req(namecell);
-	entry = getfree();
-	mark_not(namecell);
-	if (!wasflagged) {
-		mark_not(value);
-	}
-	/* add the new name element to the oblist */
-	entry->lefptr = oblptr;
-	oblptr = entry;
-	entry->r.rigptr = namecell;
-	oblcache_invalidate(); /* its cached "not in the oblist" is now wrong */
-}
-if (islambdalist(entry->r.rigptr->lefptr) || islambdalist(value)) {
-	compex_defgen++; /* a function given or taken away, as lx_set */
-}
-/* only do pointing if not null definition */
-entry->r.rigptr->lefptr = isnullcell(value) ? NULL : value;
-} /* end function cx_assign */
 
 /* (setq name expr): value is expr's, name the name's cell in the form */
 static SLC *cx_setq(SLC *value, SLC *name)
 {
-cx_assign(name, value);
+internal_set(name, value, SET_GLOBAL);
 return value;
 } /* end function cx_setq */
 
@@ -785,7 +790,7 @@ if (name == NULL || name->lstat != IDATOM) {
 		mark_not(value);
 	}
 } else {
-	cx_assign(name, value);
+	internal_set(name, value, SET_GLOBAL);
 }
 mark_not(name);
 return retval;
@@ -804,7 +809,112 @@ if (trace == FALSE && (entry = sear_oblist(atom)) != NULL) {
 return lx_eval(atom);
 } /* end function cx_var */
 
+/* ---- compiled let and let* ---- */
+/* As let_common (main.c), each var bound by internal_set (SET_BIND). */
+/* let*: each value is worked out and bound at once (cx_let_bind1). */
+/* let: the values are kept, gcflagged, on a stack (one let's after */
+/* another's, so a let in a value has its own) until all are worked */
+/* out, then bound together in order (cx_let_bind_all). The forms are */
+/* compiled; cx_let_end then unbinds and passes on the last one's value */
+
+#define MAXLETVALS 10000
+static SLC *let_vals[MAXLETVALS];
+static int  let_depth = 0;
+
+static void cx_let_push(SLC *value)
+{
+if (let_depth >= MAXLETVALS - 1) {
+	puts("Fatal: compex: compiled let nested too deep");
+	exit(9);
+}
+mark_req(value);
+let_vals[++let_depth] = value;
+} /* end function cx_let_push */
+
+/* binds the last n values pushed to the vars of the n clauses from */
+/* clause on, in order */
+static void cx_let_bind_all(SLC *clause, int n)
+{
+int base = let_depth - n, i;
+
+for (i = 1; i <= n; i++, clause = clause->lefptr) {
+	internal_set(clause->r.rigptr, let_vals[base + i], SET_BIND);
+	mark_not(let_vals[base + i]); /* the binding list keeps it now */
+}
+let_depth = base;
+} /* end function cx_let_bind_all */
+
+/* let*: binds var (its cell in the form) to value */
+static void cx_let_bind1(SLC *value, SLC *var)
+{
+internal_set(var, value, SET_BIND);
+} /* end function cx_let_bind1 */
+
+/* unbinds the n vars of a let, the value of its last form is res */
+static SLC *cx_let_end(SLC *res, int n)
+{
+while (n--) {
+	if (binlptr) {
+		binlptr = binlptr->lefptr;
+	} else {
+		printf ("Error:  let: unbind from empty binding list\n");
+		longjmp (main_env,5);
+	}
+}
+return res;
+} /* end function cx_let_end */
+
 static void compile(SLC *x, primentry *tab, int depth);
+static void compile_set_value(SLC *v, primentry *tab, int depth);
+
+/* compiles (let ((var val)...) form...) (parallel) or let* as */
+/* let_common (main.c) does it. Returns false, having written nothing, */
+/* if a clause is not (var) or (var val) with var an atom, or there are */
+/* no forms: lx_let then reports it */
+static bool compile_let(SLC *head, bool parallel, primentry *tab, int depth)
+{
+SLC *vlist = head->lefptr, *clause, *var, *form;
+int n = 0;
+
+if (vlist == NULL || vlist->lstat != LSLST || vlist->r.rigptr == NULL
+    || vlist->lefptr == NULL) {
+	return false;
+}
+for (clause = vlist->r.rigptr; clause != NULL; clause = clause->lefptr) {
+	if (clause->lstat != LSLST || clause->r.rigptr == NULL
+	    || clause->r.rigptr->lstat != IDATOM || ++n > 0xffff) {
+		return false;
+	}
+}
+trace_step(depth, parallel ? "let:" : "let*:", NULL);
+for (clause = vlist->r.rigptr; clause != NULL; clause = clause->lefptr) {
+	var = clause->r.rigptr;
+	trace_step(depth + 1, parallel ? "value for" : "bind", var);
+	/* as let_common, a number is given as a copy, (var) as () */
+	compile_set_value(var->lefptr, tab, depth + 2);
+	emit_result_to_arg();
+	if (parallel) {
+		emit_call((uintptr_t)cx_let_push);
+	} else {
+		emit_const_arg2((uintptr_t)var);
+		emit_call((uintptr_t)cx_let_bind1);
+	}
+}
+if (parallel) {
+	trace_step(depth + 1, "bind them all", NULL);
+	emit_const_arg((uintptr_t)vlist->r.rigptr);
+	emit_param(1, n);
+	emit_call((uintptr_t)cx_let_bind_all);
+}
+for (form = vlist->lefptr; form != NULL; form = form->lefptr) {
+	compile(form, tab, depth + 1);
+}
+trace_step(depth + 1, "unbind, keep the value", NULL);
+emit_result_to_arg();
+emit_param(1, n);
+emit_call((uintptr_t)cx_let_end);
+return true;
+} /* end function compile_let */
 
 /* a copy of a number in a form, not linked to the argument after it */
 static SLC *cx_num_copy(SLC *num)
@@ -1352,6 +1462,16 @@ if (x->lstat == LSLST && x->r.rigptr != NULL) {
 			emit_param(1, NOEVAL);
 			emit_call((uintptr_t)lx_set);
 			return;
+		case SP_LET:
+			if (compile_let(head, pe->paramval == 1, tab, depth)) {
+				return;
+			}
+			/* a bad clause or no forms: lx_let reports it */
+			snprintf(what, sizeof what, "call lx_%s:", pe->name);
+			trace_step(depth, what, x);
+			emit_const_arg((uintptr_t)head);
+			emit_call((uintptr_t)pe->fn);
+			return;
 		case SP_UNEVALARG:
 			snprintf(what, sizeof what, "call lx_%s, unevaluated:", pe->name);
 			trace_step(depth, what, head->lefptr);
@@ -1625,8 +1745,8 @@ if (goodtable) {
 	ptable[66] = (primentry){"rectangle", (anyfn)lx_rectangle, false, 0, 0, 0, SP_NONE};
 	ptable[67] = (primentry){"onscreen", (anyfn)lx_onscreen,  false, 0, 0, 0, SP_NONE};
 	ptable[68] = (primentry){"polygon", (anyfn)lx_polygon,    false, 0, 0, 0, SP_NONE};
-	ptable[69] = (primentry){"let",     (anyfn)lx_let,        false, 0, 0, 0, SP_NONE};
-	ptable[70] = (primentry){"letstar", (anyfn)lx_letstar,    false, 0, 0, 0, SP_NONE};
+	ptable[69] = (primentry){"let",     (anyfn)lx_let,        false, 0, 1, 0, SP_LET}; /* parallel */
+	ptable[70] = (primentry){"letstar", (anyfn)lx_letstar,    false, 0, 0, 0, SP_LET}; /* series */
 	ptable[71] = (primentry){"compex",  NULL,                 false, 0, 0, 0, SP_FALLBACK}; /* never compile compex itself */
 	ptable[72] = (primentry){"defined", (anyfn)lx_defined,    false, 0, 0, 0, SP_UNEVALARG};
 goodtable = true;
@@ -1682,6 +1802,7 @@ arith_depth = 0;
 frame_depth = 0;
 eq_depth = 0;
 set_depth = 0;
+let_depth = 0;
 nlocals = 0;
 #endif
 comparing = false;
@@ -1718,6 +1839,7 @@ arith_depth = 0;
 frame_depth = 0;
 eq_depth = 0;
 set_depth = 0;
+let_depth = 0;
 #endif
 comparing = false;
 cx_active = 0;
@@ -1785,19 +1907,29 @@ if (comparing || head == NULL || head->lstat != IDATOM
     || (lam = lambda_of(head)) == NULL || lam->r.rigptr != form->r.rigptr) {
 	/* comparing already, or an anonymous ((lambda ...) args) or an */
 	/* alias: as the interpreter */
+	if (syslogyes) {
+		cx_log(comparing ? "miss nested in mode 2 (interpreted)"
+		       : (head == NULL || head->lstat != IDATOM) ? "miss anonymous lambda (interpreted)"
+		       : "miss alias (interpreted)", inptr);
+	}
 	return do_lambda(inptr, form);
 }
 id = head->r.idval;
 fill_table();
 cf = cfunc_for(id, lam);
 if (cf == NULL) {
+	cx_log("miss table full (interpreted)", head);
 	return do_lambda(inptr, form);
 }
 if (cf->code == NULL) {
+	cx_log("miss compiling", head);
 	cx_print = (getenv("LISPCSPRINT") != NULL);
 	if (!compile_pending(ptable)) {
+		cx_log("miss store full (interpreted)", head);
 		return do_lambda(inptr, form); /* no room: interpret */
 	}
+} else {
+	cx_log("hit", head);
 }
 if (compex_mode == 1) {
 	cx_active++; /* (compex 4) must not free the code while it runs */
@@ -1921,6 +2053,7 @@ emit_p = memptr;
 emit_end = memptr + CODEMEM_SIZE;
 emit_ok = true;
 free_callsites(&formsites); /* the last (compex form)'s, its code is replaced */
+cx_log("form compiling", x);
 compiling_form = true;
 emit_prologue();
 compile(x, ptable, 1);
@@ -1939,6 +2072,7 @@ arith_depth = 0; /* in case an abort left compiled arithmetic unfinished */
 frame_depth = 0; /* or a compiled call half set up */
 eq_depth = 0;    /* or an eq */
 set_depth = 0;   /* or a set */
+let_depth = 0;   /* or a let */
 compex_code_running = true;
 retval = codefn(); /* run the compiled code */
 compex_code_running = false;

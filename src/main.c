@@ -23,6 +23,7 @@
 #include  <setjmp.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <syslog.h>
 #include <math.h>
 #include "listspec.h"
 #include "turtinf.h"
@@ -32,14 +33,20 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.66"
+#define LISPVER "3.67"
 
 SLC *lx_eval_internal               (SLC *, bool);
+
+extern void syslog_form(SLC* form);
 
 void read_file (char * fname);
 void Prompt_and_Read(int fout);  
 
 int garb_announce = FALSE;
+/* LISPSYSLOG set: 1 (or any other value) logs the start and the */
+/* compiler (compex) hits and misses to syslog, */
+/* facility local1; 2 also every form evaluated */
+int syslogyes = 0;
 jmp_buf main_env;
 
 /* shared between this process and the forked Prompt_and_Read child via
@@ -158,6 +165,18 @@ inStream = fdopen(fd1[0], "r");
 initmainlist();
 linenoiseHistoryLoad("history.txt"); /* Load the history at startup */
 linenoiseHistorySetMaxLen(50);
+
+/* syslog: LISPSYSLOG=1 (or any value) or 2, see syslogyes */
+syslogyes = 0;
+libname = getenv("LISPSYSLOG");
+if (libname != NULL) {
+	syslogyes = (atoi(libname) >= 2) ? 2 : 1;
+	printf ("syslogyes is %d\n", syslogyes);
+	setlogmask (LOG_UPTO (LOG_NOTICE));
+	openlog ("lisp", LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE), "lisp %s started, pid %d, level %d",
+		LISPVER, (int)getpid(), syslogyes);
+}
 
 /* look for environment lisp library, and load it if found */
 libname = getenv("LISPLIB");
@@ -317,6 +336,10 @@ int redefs;
 	formname = EVALID;
 	res = form = NULL;
 	mark_req (inptr);
+
+	if (syslogyes > 1) {
+		syslog_form(inptr);
+	}
 
 	if (inptr->lstat == NUMATOM) {
 		if (inptr->lefptr != NULL && inptr->isfptr == 0) {
@@ -692,7 +715,7 @@ SLC *nextf, *tf, *temp;
 
 
 
-/* Parallel binding, shared by lambda_bind and lx_let. */
+/* Parallel binding of lambda_bind (let binds through internal_set). */
 /* All the values are evaluated before any variable is bound, so a value */
 /* that names one of the new variables sees the caller's value */
 /* e.g. (f 'x a) with (defun f (a b) ..) gives b the caller's a, not x, */
@@ -2112,15 +2135,16 @@ return res;
 /* locates the var list, binds each var to its evaluated val */
 /* locates the forms, evaluates each one */
 /* unbinds the binding list at the end */
-/* shared by let and let*, both using bind_to_pending/bind_pending as */
-/* lambda_bind does. parallel (let): all the vals are evaluated before */
-/* any var is bound, so in ((a 1) (b a)) b gets the outer a, as with */
-/* lambda args. series (let*): each var is bound as soon as its val is */
-/* evaluated, so in ((a 1) (b a)) b gets 1 */
+/* shared by let and let*, each var bound by internal_set (SET_BIND). */
+/* parallel (let): all the vals are evaluated before any var is bound, */
+/* so in ((a 1) (b a)) b gets the outer a, as with lambda args; they */
+/* are then bound in order, the last var at the top of the binding list. */
+/* series (let*): each var is bound as soon as its val is evaluated, so */
+/* in ((a 1) (b a)) b gets 1 */
 static SLC *let_common(SLC *form, int parallel, char *fname)
 {
-  SLC *vlist, *flist, *clause, *var, *res;
-  SLC *pending = NULL, *pendlast = NULL;
+  SLC *vlist, *flist, *clause, *var, *val, *tmp, *res;
+  int nclauses = 0, nvals = 0, i;
   int nbound = 0;
   int formcount = 0; /* if there is a let without any forms its useless */
 
@@ -2130,26 +2154,46 @@ static SLC *let_common(SLC *form, int parallel, char *fname)
 	printf ("Error: %s: bad locals - needs ( (var val..) )\n", fname);
 	longjmp (main_env,5);
   }
+  for (clause = vlist->r.rigptr; clause; clause = clause->lefptr) {
+    nclauses++;
+  }
+  {
+  SLC *vars[nclauses], *vals[nclauses]; /* let: the vals, until bound */
+
   clause = vlist->r.rigptr;
   while(clause) {
     if (clause->lstat != LSLST || clause->r.rigptr == NULL) {
       report_error (fname, "each local must be (var val)", clause, TRUE);
       trace = TRUE;
+    } else if ((var = clause->r.rigptr)->lstat != IDATOM) {
+      report_error (fname, "formal arguments must be atoms", NULL, FALSE);
+      trace = TRUE;
     } else {
-      var = clause->r.rigptr;
-      /* var->lefptr is the val, NULL for a clause of just (var) */
-      if (bind_to_pending(var, var->lefptr, &pending, &pendlast, fname)) {
-        nbound += 1;	/* only count a binding that was made */
-        if (!parallel) {
-          /* let*: bind now, so the following vals see this var */
-          bind_pending(pending, pendlast);
-          pending = pendlast = NULL;
-        }
+      /* var->lefptr is the val, NULL for a clause of just (var); a */
+      /* copy is evaluated, cut from what follows (a NULL val gives a */
+      /* null cell, so nil) */
+      mark_req(tmp = getfree());
+      copycell(var->lefptr, tmp);
+      tmp->lefptr = NULL;
+      val = lx_eval(tmp);
+      mark_not(tmp);
+      if (parallel) {
+        mark_req(val); /* kept until bound, the next vals may collect */
+        vars[nvals] = var;
+        vals[nvals++] = val;
+      } else {
+        internal_set(var, val, SET_BIND); /* let*: the next vals see it */
+        nbound += 1;
       }
     }
     clause = clause->lefptr;
   }
-  bind_pending(pending, pendlast);
+  for (i = 0; i < nvals; i++) {
+    internal_set(vars[i], vals[i], SET_BIND);
+    mark_not(vals[i]); /* the binding list keeps it from here on */
+    nbound += 1;	/* only count a binding that was made */
+  }
+  }
   /* evaluate form1 form2... to the end of the let */
   flist = vlist->lefptr;
   if (flist == NULL ) {
@@ -2194,9 +2238,58 @@ SLC *lx_letstar(SLC *form)
 
 
 
+/* gives the atom name the value (both already evaluated), by method: */
+/* SET_GLOBAL (set, setq): the name is looked up, so a set within a */
+/* binding changes the binding; a name with neither a binding nor a */
+/* global is added to the oblist. SET_BIND (let, let*): always a new */
+/* binding, put at the top of the binding list (the caller unbinds it). */
+/* A new name cell is a copy of name, whose own cell is part of a form */
+/* or may be a variable's value. value's gcflag is left as it was found. */
+/* Used by the interpreter (lx_set, let_common) and by compiled code */
+/* (compex.c: set, setq, let and let*) */
+void internal_set(SLC *name, SLC *value, int method)
+{
+SLC *entry = NULL, *namecell;
+bool wasflagged = (value != NULL && value->gcflagged);
+
+if (method == SET_GLOBAL) {
+	entry = sear_oblist(name);
+}
+if (entry == NULL) {
+	mark_req(value); /* getfree can run a garbage collection */
+	namecell = getfree();
+	copycell(name, namecell);
+	namecell->lefptr = NULL;
+	mark_req(namecell);
+	entry = getfree();
+	mark_not(namecell);
+	entry->r.rigptr = namecell;
+	if (method == SET_BIND) {
+		entry->lefptr = binlptr;
+		binlptr = entry;
+		note_bound(namecell); /* for compiled calls, see listspec.h */
+	} else {
+		/* add the new name element to the oblist */
+		entry->lefptr = oblptr;
+		oblptr = entry;
+		oblcache_invalidate(); /* its cached "not in the oblist" is now wrong */
+	}
+	if (!wasflagged) {
+		mark_not(value);
+	}
+}
+if (islambdalist(entry->r.rigptr->lefptr) || islambdalist(value)) {
+	compex_defgen++; /* a function given or taken away: compiled calls recheck */
+}
+/* only do pointing if not null definition */
+entry->r.rigptr->lefptr = isnullcell(value) ? NULL : value;
+} /* end function internal_set */
+
+
+
 SLC *lx_set(SLC *form, int mode)
 {
-SLC *a1ptr,*a2ptr,*newptr,*tptr,*retval;
+SLC *a1ptr,*a2ptr,*retval;
 
 /* set (mode EVAL) and setq (mode NOEVAL) */
 /* lx_prin(stdout,form, SPACE, NOESC); this is for debug */
@@ -2221,37 +2314,7 @@ if (a1ptr == NULL || a1ptr->lstat != IDATOM) {
 	retval = report_error("set(q)","args must be non-numeric atoms",form, TRUE);
 	goto exit;
 } /* end error check */
-/* search returns a null if nothing found; a set within a binding */
-/* finds and changes the binding */
-newptr= sear_oblist(a1ptr);
-if (newptr == NULL) {
-	/* add the new name element to the oblist */
-	if (mode == EVAL) {
-		/* set: the name cell is a copy of the first arg's value, */
-		/* whose own cell may be a variable's value or part of a */
-		/* form (setq's is a copy already) */
-		tptr = getfree();
-		copycell (a1ptr, tptr);
-		tptr->lefptr = NULL;
-		mark_not(a1ptr);
-		mark_req(a1ptr = tptr);
-	}
-	newptr = getfree();
-	newptr->lefptr = oblptr;
-	oblptr = newptr;
-	newptr->r.rigptr = a1ptr;
-	oblcache_invalidate(); /* its cached "not in the oblist" is now wrong */
-} 
-tptr = newptr->r.rigptr;
-if (islambdalist(tptr->lefptr) || islambdalist(a2ptr)) {
-	compex_defgen++; /* a function given or taken away: compiled calls recheck */
-}
-if (isnullcell(a2ptr)==FALSE) {
-	/* only do pointing if not null definition */
-	tptr->lefptr = a2ptr;
-} else {
-	tptr->lefptr = NULL;
-}
+internal_set(a1ptr, a2ptr, SET_GLOBAL);
 retval = a2ptr;
 
 exit:
@@ -2349,3 +2412,30 @@ if (isnullcell(res) == test) {
 return res;
 } /* end function lx_while */
 
+
+/* logs a form being evaluated (LISPSYSLOG=2): the number of elements */
+/* that follow it, its type and its value as a number */
+void syslog_form(SLC* pform)
+{
+	int llen;
+	const char* lstatvals[3];
+	SLC* tp;
+
+	if (syslogyes < 2) {
+		return;
+	}
+	lstatvals[0] = "List";
+	lstatvals[1] = "Number";
+	lstatvals[2] = "Idend";
+	llen = 0;
+	tp = pform;
+	while (tp->lefptr) {
+		llen++;
+		tp = tp->lefptr;
+	}
+
+	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE),
+	"lisp form llen=%d lstat=%s idnum=%f",
+       	llen, lstatvals[pform->lstat], pform->r.rigval);
+
+}
