@@ -188,8 +188,9 @@
 (defun rev (lis) ; reverses a top level list, useing a let block
   (let ( (res () ) )
     (loop
+      (while lis)
       (setq res (cons (car lis) res))
-      (while (setq lis (cdr lis)))
+      (setq lis (cdr lis))
     )
     res
   )
