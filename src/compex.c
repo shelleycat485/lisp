@@ -62,6 +62,9 @@ enum {
 	SP_WHILE,     /* while, until: test and the forms after it compiled */
 	SP_SET,       /* set, setq: arguments compiled, then cx_set_* / cx_setq */
 	SP_LET,       /* let, let*: values and forms compiled, cx_let_* bind */
+	SP_CONS,      /* cons: both arguments compiled, then cx_cons_* */
+	SP_CARCDR,    /* car, cdr: argument compiled, then cx_car / cx_cdr */
+	SP_LIST,      /* list: arguments compiled, each added by cx_list_add */
 	SP_FALLBACK   /* not compiled: lx_eval(whole form) */
 };
 typedef struct {
@@ -865,6 +868,198 @@ return res;
 } /* end function cx_let_end */
 
 static void compile(SLC *x, primentry *tab, int depth);
+
+/* ---- compiled car and cdr ---- */
+/* As lx_car and lx_cdr (main.c), given the argument's value: () gives */
+/* (), an atom is reported. car: a copy of the first element, cut from */
+/* the rest. cdr: a new list cell for the rest of the list, sharing it */
+
+static SLC *cx_car(SLC *value)
+{
+SLC *res;
+bool wasflagged;
+
+if (value == NULL) {
+	return NULL;
+}
+if (value->lstat != LSLST) {
+	return report_error ("car", "car argument must be a list", value, TRUE);
+}
+wasflagged = value->gcflagged;
+mark_req(value); /* getfree can run a garbage collection */
+copycell(value->r.rigptr, res = getfree());
+if (!wasflagged) {
+	mark_not(value);
+}
+res->lefptr = NULL; /* cut link to rest of list */
+return res;
+} /* end function cx_car */
+
+static SLC *cx_cdr(SLC *value)
+{
+SLC *res;
+bool wasflagged;
+
+if (value == NULL) {
+	return NULL;
+}
+if (value->lstat != LSLST) {
+	return report_error ("cdr", "argument must be a list", value, TRUE);
+}
+wasflagged = value->gcflagged;
+mark_req(value); /* getfree can run a garbage collection */
+res = getfree();
+if (!wasflagged) {
+	mark_not(value);
+}
+if (value->r.rigptr != NULL) {
+	res->r.rigptr = value->r.rigptr->lefptr; /* the rest, or () */
+}
+return res;
+} /* end function cx_cdr */
+
+/* ---- compiled cons and list ---- */
+/* As lx_cons and lx_list (main.c), but with the arguments compiled. */
+/* cons: the first value is kept, gcflagged as lx_cons does, on a stack */
+/* (one per cons being worked out, so a cons in the second argument and */
+/* recursion each have their own) while the second is worked out; then */
+/* cx_cons_second makes the new list as lx_cons does. */
+/* list: as lx_list, the result list is grown as each value is worked */
+/* out; its first cell, gcflagged, and the cell to fill next are kept on */
+/* a stack, one pair per list being made */
+
+#define MAXCONS 10000
+static SLC *cons_first[MAXCONS];
+static int  cons_depth = 0;
+
+static void cx_cons_first(SLC *value)
+{
+if (cons_depth >= MAXCONS - 1) {
+	puts("Fatal: compex: compiled cons nested too deep");
+	exit(9);
+}
+mark_req(value);
+cons_first[++cons_depth] = value;
+} /* end function cx_cons_first */
+
+/* a2 is the second argument's value: a list gives the rest of the new */
+/* list, an atom a copy of it as the last element, () nothing */
+static SLC *cx_cons_second(SLC *a2)
+{
+SLC *a1 = cons_first[cons_depth];
+SLC *res, *newptr, *tail;
+bool wasflagged = (a2 != NULL && a2->gcflagged);
+
+mark_req(a2); /* getfree can run a garbage collection */
+mark_req(res = getfree());
+newptr = getfree();
+res->r.rigptr = newptr;
+if (a1) {
+	newptr->lstat = a1->lstat;
+	newptr->r = a1->r;
+}
+if (a2) {
+	if (a2->lstat == LSLST) {
+		newptr->lefptr = a2->r.rigptr;
+	} else {
+		/* a copy: the atom's own cell may be a variable's value */
+		/* or part of a form */
+		tail = getfree();
+		copycell(a2, tail);
+		tail->lefptr = NULL;
+		newptr->lefptr = tail;
+	}
+}
+if (!wasflagged) {
+	mark_not(a2);
+}
+mark_not(res);
+mark_not(a1);
+cons_depth--;
+return res;
+} /* end function cx_cons_second */
+
+#define MAXLIST 10000
+static SLC *list_first[MAXLIST]; /* the result list's first cell */
+static SLC *list_next[MAXLIST];  /* its cell for the next value */
+static int  list_depth = 0;
+
+static void cx_list_begin(void)
+{
+SLC *first;
+
+if (list_depth >= MAXLIST - 1) {
+	puts("Fatal: compex: compiled list nested too deep");
+	exit(9);
+}
+mark_req(first = getfree());
+list_depth++;
+list_first[list_depth] = list_next[list_depth] = first;
+} /* end function cx_list_begin */
+
+/* value is the next argument's value, a copy of it is the next */
+/* element (a () value leaves the new cell as ()); more is 1 if */
+/* another argument follows */
+static void cx_list_add(SLC *value, int more)
+{
+SLC *temp = list_next[list_depth];
+
+if (value) {
+	copycell(value, temp);
+}
+if (more) {
+	temp->lefptr = getfree();
+	list_next[list_depth] = temp->lefptr;
+}
+} /* end function cx_list_add */
+
+static SLC *cx_list_end(void)
+{
+SLC *first = list_first[list_depth], *result;
+
+list_next[list_depth]->lefptr = NULL;
+result = getfree(); /* the header cell of the new list */
+result->r.rigptr = first;
+mark_not(first);
+list_depth--;
+return result;
+} /* end function cx_list_end */
+
+#define MAXLISTARGS 64
+
+/* compiles (list a b ...). Returns false, having written nothing, if */
+/* it has more than MAXLISTARGS arguments: lx_list is then called */
+static bool compile_list(SLC *head, primentry *tab, int depth)
+{
+SLC *arg;
+int n = 0;
+
+for (arg = head->lefptr; arg != NULL; arg = arg->lefptr) {
+	if (++n > MAXLISTARGS) {
+		return false;
+	}
+}
+if (isnullcell(head->lefptr)) {
+	/* as lx_list: no arguments, or a first argument written as (), */
+	/* gives () and nothing is evaluated */
+	trace_step(depth, "list with no args or () first: const ()", NULL);
+	emit_const_result(0);
+	return true;
+}
+trace_step(depth, "list:", NULL);
+emit_call((uintptr_t)cx_list_begin);
+for (arg = head->lefptr; arg != NULL; arg = arg->lefptr) {
+	compile(arg, tab, depth + 1);
+	trace_step(depth + 1, arg->lefptr ? "add, more to come" : "add, the last", NULL);
+	emit_result_to_arg();
+	emit_param(1, arg->lefptr != NULL);
+	emit_call((uintptr_t)cx_list_add);
+}
+trace_step(depth + 1, "end the list", NULL);
+emit_call((uintptr_t)cx_list_end);
+return true;
+} /* end function compile_list */
+
 static void compile_set_value(SLC *v, primentry *tab, int depth);
 
 /* compiles (let ((var val)...) form...) (parallel) or let* as */
@@ -1472,6 +1667,49 @@ if (x->lstat == LSLST && x->r.rigptr != NULL) {
 			emit_const_arg((uintptr_t)head);
 			emit_call((uintptr_t)pe->fn);
 			return;
+		case SP_CARCDR:
+			if (isnullcell(head->lefptr)) {
+				/* no argument, or () written as it: lx_car / */
+				/* lx_cdr reports it */
+				snprintf(what, sizeof what, "call lx_%s:", pe->name);
+				trace_step(depth, what, x);
+				emit_const_arg((uintptr_t)head);
+				emit_call((uintptr_t)pe->fn);
+				return;
+			}
+			/* extra args are not evaluated, as in lx_car / lx_cdr */
+			compile(head->lefptr, tab, depth + 1);
+			snprintf(what, sizeof what, "%s of the value", pe->name);
+			trace_step(depth, what, NULL);
+			emit_result_to_arg();
+			emit_call(pe->fn == (anyfn)lx_car ? (uintptr_t)cx_car : (uintptr_t)cx_cdr);
+			return;
+		case SP_CONS:
+			if (head->lefptr == NULL || head->lefptr->lefptr == NULL) {
+				/* fewer than two args: lx_cons reports it */
+				trace_step(depth, "call lx_cons:", x);
+				emit_const_arg((uintptr_t)head);
+				emit_call((uintptr_t)lx_cons);
+				return;
+			}
+			/* extra args are not evaluated, as in lx_cons */
+			trace_step(depth, "cons:", NULL);
+			compile(head->lefptr, tab, depth + 1);
+			emit_result_to_arg();
+			emit_call((uintptr_t)cx_cons_first);
+			compile(head->lefptr->lefptr, tab, depth + 1);
+			emit_result_to_arg();
+			emit_call((uintptr_t)cx_cons_second);
+			return;
+		case SP_LIST:
+			if (compile_list(head, tab, depth)) {
+				return;
+			}
+			/* too many arguments: call lx_list with the form */
+			trace_step(depth, "call lx_list:", x);
+			emit_const_arg((uintptr_t)head);
+			emit_call((uintptr_t)lx_list);
+			return;
 		case SP_UNEVALARG:
 			snprintf(what, sizeof what, "call lx_%s, unevaluated:", pe->name);
 			trace_step(depth, what, head->lefptr);
@@ -1681,13 +1919,13 @@ if (goodtable) {
 	ptable[2]  = (primentry){"true",    (anyfn)lx_true,       false, 0, 0, 0, SP_NONE};
 	ptable[3]  = (primentry){"eval",    (anyfn)lx_eval,       true,  0, 0, 0, SP_EVAL};
 	ptable[4]  = (primentry){"lambda",  NULL,                 false, 0, 0, 0, SP_FALLBACK};
-	ptable[5]  = (primentry){"cdr",     (anyfn)lx_cdr,        false, 0, 0, 0, SP_NONE};
-	ptable[6]  = (primentry){"car",     (anyfn)lx_car,        false, 0, 0, 0, SP_NONE};
-	ptable[7]  = (primentry){"cons",    (anyfn)lx_cons,       false, 0, 0, 0, SP_NONE};
+	ptable[5]  = (primentry){"cdr",     (anyfn)lx_cdr,        false, 0, 0, 0, SP_CARCDR};
+	ptable[6]  = (primentry){"car",     (anyfn)lx_car,        false, 0, 0, 0, SP_CARCDR};
+	ptable[7]  = (primentry){"cons",    (anyfn)lx_cons,       false, 0, 0, 0, SP_CONS};
 	ptable[8]  = (primentry){"and",     (anyfn)lx_and,        false, 0, 0, 0, SP_AND};
 	ptable[9]  = (primentry){"or",      (anyfn)lx_or,         false, 0, 0, 0, SP_OR};
 	ptable[10] = (primentry){"cond",    (anyfn)lx_cond,       false, 0, 0, 0, SP_COND};
-	ptable[11] = (primentry){"list",    (anyfn)lx_list,       false, 0, 0, 0, SP_NONE};
+	ptable[11] = (primentry){"list",    (anyfn)lx_list,       false, 0, 0, 0, SP_LIST};
 	ptable[12] = (primentry){"loop",    (anyfn)lx_loop,       false, 0, 0, 0, SP_LOOP};
 	ptable[13] = (primentry){"while",   (anyfn)lx_while,      false, 1, TRUE, 0, SP_WHILE};  /* while */
 	ptable[14] = (primentry){"while",   (anyfn)lx_while,      false, 1, FALSE, 0, SP_WHILE}; /* until */
@@ -1803,6 +2041,8 @@ frame_depth = 0;
 eq_depth = 0;
 set_depth = 0;
 let_depth = 0;
+cons_depth = 0;
+list_depth = 0;
 nlocals = 0;
 #endif
 comparing = false;
@@ -1840,6 +2080,8 @@ frame_depth = 0;
 eq_depth = 0;
 set_depth = 0;
 let_depth = 0;
+cons_depth = 0;
+list_depth = 0;
 #endif
 comparing = false;
 cx_active = 0;
@@ -2073,6 +2315,8 @@ frame_depth = 0; /* or a compiled call half set up */
 eq_depth = 0;    /* or an eq */
 set_depth = 0;   /* or a set */
 let_depth = 0;   /* or a let */
+cons_depth = 0;  /* or a cons */
+list_depth = 0;  /* or a list */
 compex_code_running = true;
 retval = codefn(); /* run the compiled code */
 compex_code_running = false;
