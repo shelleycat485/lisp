@@ -33,7 +33,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-#define LISPVER "3.68"
+#define LISPVER "3.69"
 
 SLC *lx_eval_internal               (SLC *, bool);
 
@@ -170,12 +170,12 @@ linenoiseHistorySetMaxLen(50);
 syslogyes = 0;
 libname = getenv("LISPSYSLOG");
 if (libname != NULL) {
-	syslogyes = (atoi(libname) >= 2) ? 2 : 1;
-	printf ("syslogyes is %d\n", syslogyes);
+	syslogyes = (atoi(libname) >= 2) ? 2 : 1; 
+	printf ("syslogyes=%d\n", syslogyes);
 	setlogmask (LOG_UPTO (LOG_NOTICE));
 	openlog ("lisp", LOG_PID | LOG_NDELAY, LOG_LOCAL1);
-	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE), "lisp %s started, pid %d, level %d",
-		LISPVER, (int)getpid(), syslogyes);
+	syslog (LOG_MAKEPRI (LOG_LOCAL1, LOG_NOTICE), "lisp %s started, syslogyes=%d",
+		LISPVER,  syslogyes);
 }
 
 /* look for environment lisp library, and load it if found */

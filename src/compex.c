@@ -2164,7 +2164,7 @@ if (cf == NULL) {
 	return do_lambda(inptr, form);
 }
 if (cf->code == NULL) {
-	cx_log("miss compiling", head);
+	cx_log("miss.compiling", head);
 	cx_print = (getenv("LISPCSPRINT") != NULL);
 	if (!compile_pending(ptable)) {
 		cx_log("miss store full (interpreted)", head);
