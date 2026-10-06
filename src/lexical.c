@@ -102,7 +102,7 @@ while (isgraph(cc)) {
 	astr [atomlength++] = cc;
 	if (atomlength == MAXIDLEN ) {
 		astr [MAXIDLEN - 2] = 0;
-		printf("Error: Identifier too longi\n%s",astr);
+		printf("Error: Identifier too long\n%s",astr);
 		longjmp (main_env, 2);
 	}
 	cc = (char) nextch(infile);
